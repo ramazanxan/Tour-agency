@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -111,7 +111,7 @@ export function GlobeExperience() {
         {stage === 'country' && (
           <motion.div
             initial={{ opacity: 0, y: reduce ? 0 : 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: reduce ? 0 : 20 }}
-            className="pointer-events-auto absolute inset-x-0 bottom-[148px] z-10 flex justify-center px-4 sm:bottom-[120px]"
+            className="pointer-events-auto absolute inset-x-0 bottom-[176px] z-10 flex justify-center px-4 sm:bottom-[120px]"
           >
             <div className="no-scrollbar flex max-w-full gap-1.5 overflow-x-auto rounded-2xl bg-white/10 p-1.5 backdrop-blur-md">
               {MODES.map((m) => (
@@ -212,10 +212,17 @@ function RegionPanel({
 }: {
   place: Place; country: Country; onClose: () => void; onVideo: (s: string) => void; reduce: boolean;
 }) {
-  const tours = place.tourSlugs.map(getTourBySlug).filter(Boolean);
+  const tours = place.tourSlugs.map(getTourBySlug).filter((t): t is NonNullable<typeof t> => Boolean(t));
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   return (
     <motion.aside
+      role="dialog" aria-modal="true" aria-label={place.name}
       initial={{ x: reduce ? 0 : '100%', opacity: reduce ? 0 : 1 }}
       animate={{ x: 0, opacity: 1 }}
       exit={{ x: reduce ? 0 : '100%', opacity: reduce ? 0 : 1 }}
@@ -283,8 +290,15 @@ function RegionPanel({
 }
 
 function VideoModal({ src, onClose }: { src: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
     <motion.div
+      role="dialog" aria-modal="true" aria-label="360° видео"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4" onClick={onClose}
     >

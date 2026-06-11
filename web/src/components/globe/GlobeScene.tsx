@@ -21,6 +21,11 @@ const TILT = 0.36; // наклон оси ~23°
 const EARTH_TEX = 'https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg';
 const BUMP_TEX = 'https://unpkg.com/three-globe/example/img/earth-topology.png';
 
+// Переиспользуемые векторы — без аллокаций в кадре (меньше нагрузка на GC, важно для мобильных)
+const _wp = new THREE.Vector3();
+const _normal = new THREE.Vector3();
+const _toCam = new THREE.Vector3();
+
 function latLngToVec3(lat: number, lng: number, r = R) {
   const phi = (90 - lat) * (Math.PI / 180);
   const theta = (lng + 180) * (Math.PI / 180);
@@ -34,7 +39,7 @@ function latLngToVec3(lat: number, lng: number, r = R) {
 // ── Земля + атмосфера ───────────────────────────────────────
 function Earth({ earthRef }: { earthRef: React.MutableRefObject<THREE.Mesh | null> }) {
   const [map, bump] = useTexture([EARTH_TEX, BUMP_TEX]);
-  useMemo(() => {
+  useEffect(() => {
     map.colorSpace = THREE.SRGBColorSpace;
   }, [map]);
 
@@ -106,12 +111,12 @@ function Pin({
       haloRef.current.scale.setScalar(1 + t * (active ? 2.8 : big ? 2 : 1.4));
       (haloRef.current.material as THREE.MeshBasicMaterial).opacity = (1 - t) * 0.55;
     }
-    // Скрываем маркеры на обратной стороне планеты
+    // Скрываем маркеры на обратной стороне планеты (без аллокаций)
     if (groupRef.current) {
-      const wp = groupRef.current.getWorldPosition(new THREE.Vector3());
-      const normal = wp.clone().normalize();
-      const toCam = state.camera.position.clone().sub(wp).normalize();
-      groupRef.current.visible = normal.dot(toCam) > -0.08;
+      groupRef.current.getWorldPosition(_wp);
+      _normal.copy(_wp).normalize();
+      _toCam.copy(state.camera.position).sub(_wp).normalize();
+      groupRef.current.visible = _normal.dot(_toCam) > -0.08;
     }
   });
 
