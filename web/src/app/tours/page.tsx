@@ -19,11 +19,19 @@ export default async function ToursPage({
 
   return (
     <div>
-      <div className="border-b border-slate-100 bg-white">
-        <div className="mx-auto max-w-6xl px-4 py-6">
-          <h1 className="text-2xl font-extrabold text-slate-900">Каталог туров</h1>
-          <p className="text-sm text-slate-500">
-            Выберите тур по Кыргызстану и забронируйте онлайн
+      <div className="relative overflow-hidden border-b border-slate-200/70 bg-gradient-to-b from-white to-slate-50">
+        {/* тонкая декоративная сетка-сияние */}
+        <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-lake-200/30 blur-3xl" />
+        <div className="pointer-events-none absolute -left-20 top-10 h-56 w-56 rounded-full bg-sunset-200/25 blur-3xl" />
+        <div className="relative mx-auto max-w-7xl px-4 pb-9 pt-11">
+          <p className="mb-3 inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-lake-600">
+            <span className="h-1 w-1 rounded-full bg-sunset-500" /> Каталог · Центральная Азия
+          </p>
+          <h1 className="font-display text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl">
+            Найдите своё путешествие
+          </h1>
+          <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-slate-500">
+            Треккинг, конные и джип-туры, горные озёра и древние города — отфильтруйте по дате, цене и сложности и забронируйте онлайн.
           </p>
         </div>
       </div>

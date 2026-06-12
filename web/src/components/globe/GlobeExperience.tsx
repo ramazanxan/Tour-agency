@@ -91,16 +91,24 @@ export function GlobeExperience() {
       <AnimatePresence>
         {stage === 'globe' && (
           <motion.div
-            initial={{ opacity: 0, y: reduce ? 0 : 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: reduce ? 0 : -20 }}
-            transition={{ duration: 0.7 }}
-            className="pointer-events-none absolute inset-x-0 top-[16%] z-10 px-6 text-center"
+            initial={{ opacity: 0, y: reduce ? 0 : 24 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: reduce ? 0 : -24 }}
+            transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
+            className="pointer-events-none absolute inset-x-0 top-[9%] z-10 px-6 text-center"
           >
-            <p className="mb-3 text-xs uppercase tracking-[0.35em] text-sunset-300">Путешествия Центральной Азии</p>
-            <h1 className="text-balance text-3xl font-extrabold leading-[1.05] text-white drop-shadow-xl sm:text-6xl">
-              Выберите страну<br className="hidden sm:block" /> на живой планете
+            {/* радиальный скрим для читаемости поверх планеты */}
+            <div className="pointer-events-none absolute left-1/2 top-1/2 -z-10 h-[140%] w-[120%] -translate-x-1/2 -translate-y-1/2 bg-[radial-gradient(ellipse_at_center,rgba(8,24,38,0.55)_0%,transparent_62%)]" />
+            <motion.p
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15, duration: 0.8 }}
+              className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-[11px] font-medium uppercase tracking-[0.32em] text-sunset-200 backdrop-blur-sm"
+            >
+              <span className="h-1 w-1 rounded-full bg-sunset-400" /> Центральная Азия · 4 страны
+            </motion.p>
+            <h1 className="font-display text-balance text-[2.6rem] font-extrabold leading-[0.98] tracking-tightest text-white drop-shadow-[0_4px_30px_rgba(0,0,0,0.5)] sm:text-7xl">
+              Откройте мир<br className="hidden sm:block" /> на{' '}
+              <span className="bg-gradient-to-r from-sunset-300 via-sunset-400 to-sunset-300 bg-clip-text text-transparent">живой планете</span>
             </h1>
-            <p className="mx-auto mt-4 max-w-md text-balance text-white/80">
-              Нажмите на метку страны или выберите её ниже — камера отправится в путешествие.
+            <p className="mx-auto mt-5 max-w-md text-balance text-[15px] leading-relaxed text-white/75">
+              Выберите страну на глобусе — камера отправится в кинематографическое путешествие к лучшим маршрутам.
             </p>
           </motion.div>
         )}
@@ -140,7 +148,7 @@ export function GlobeExperience() {
               {stage === 'globe'
                 ? countries.map((c) => (
                     <RailCard
-                      key={c.id} title={c.name} subtitle={c.tagline} flag={c.flag}
+                      key={c.id} title={c.name} subtitle={c.tagline} flagCode={c.id}
                       active={hoveredId === c.id}
                       onHover={() => setHoveredId(c.id)} onLeave={() => setHoveredId(null)}
                       onClick={() => selectCountry(c)}
@@ -179,30 +187,48 @@ export function GlobeExperience() {
   );
 }
 
+// Настоящий SVG-флаг (эмодзи-флаги не рендерятся на Windows)
+function Flag({ code, className = '' }: { code: string; className?: string }) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`https://flagcdn.com/${code}.svg`}
+      alt=""
+      aria-hidden
+      className={`object-cover ${className}`}
+    />
+  );
+}
+
 function RailCard({
-  title, subtitle, flag, image, active, onHover, onLeave, onClick,
+  title, subtitle, flagCode, image, active, onHover, onLeave, onClick,
 }: {
-  title: string; subtitle: string; flag?: string; image?: string;
+  title: string; subtitle: string; flagCode?: string; image?: string;
   active: boolean; onHover: () => void; onLeave: () => void; onClick: () => void;
 }) {
   return (
     <button
       onMouseEnter={onHover} onMouseLeave={onLeave} onClick={onClick}
-      className={`group relative flex w-56 shrink-0 items-center gap-3 overflow-hidden rounded-2xl border p-3 text-left backdrop-blur-md transition-all ${
-        active ? 'border-white/70 bg-white/20 scale-[1.02]' : 'border-white/10 bg-white/10 hover:bg-white/15'
+      className={`group relative flex w-60 shrink-0 items-center gap-3 overflow-hidden rounded-2xl border p-3 text-left backdrop-blur-xl transition-all duration-300 ${
+        active
+          ? 'border-white/60 bg-white/[0.18] shadow-[0_8px_30px_-8px_rgba(0,0,0,0.5)] -translate-y-1'
+          : 'border-white/10 bg-white/[0.07] hover:border-white/30 hover:bg-white/[0.12]'
       }`}
     >
-      {flag ? (
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15 text-2xl">{flag}</span>
+      {flagCode ? (
+        <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl ring-1 ring-white/20">
+          <Flag code={flagCode} className="h-full w-full" />
+        </span>
       ) : image ? (
-        <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl">
+        <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl ring-1 ring-white/15">
           <Image src={image} alt={title} fill sizes="44px" className="object-cover" />
         </span>
       ) : null}
-      <span className="min-w-0">
-        <span className="block truncate font-semibold text-white">{title}</span>
-        <span className="block truncate text-xs text-white/70">{subtitle}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-display font-bold tracking-tight text-white">{title}</span>
+        <span className="mt-0.5 block truncate text-xs text-white/65">{subtitle}</span>
       </span>
+      <ArrowLeft size={16} className="shrink-0 rotate-180 text-white/40 transition-all duration-300 group-hover:translate-x-0.5 group-hover:text-white" />
     </button>
   );
 }
@@ -233,8 +259,8 @@ function RegionPanel({
         <X size={18} />
       </button>
 
-      <div className="mb-1 flex items-center gap-1.5 text-sm font-medium text-sunset-600">
-        <span>{country.flag}</span> {country.name}
+      <div className="mb-1 flex items-center gap-2 text-sm font-medium text-sunset-600">
+        <Flag code={country.id} className="h-3.5 w-5 rounded-[2px] ring-1 ring-black/10" /> {country.name}
       </div>
       <h2 className="text-2xl font-extrabold text-slate-900">{place.name}</h2>
       <p className="mt-2 text-slate-600">{place.blurb}</p>

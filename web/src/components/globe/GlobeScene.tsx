@@ -16,12 +16,23 @@ import {
 export type Stage = 'globe' | 'country' | 'region';
 
 const R = 1;
-const DIST: Record<Stage, number> = { globe: 3.6, country: 2.05, region: 1.62 };
-const TILT = 0.36; // наклон оси ~23°
-const EARTH_TEX = 'https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg';
-const BUMP_TEX = 'https://unpkg.com/three-globe/example/img/earth-topology.png';
+const DIST: Record<Stage, number> = { globe: 3.9, country: 2.05, region: 1.62 };
+const TILT = 0.41; // наклон оси ~23.5°
 
-// Переиспользуемые векторы — без аллокаций в кадре (меньше нагрузка на GC, важно для мобильных)
+// Направление на Солнце в мировых координатах (3/4 — виден и день, и кромка ночи с огнями городов)
+const SUN_DIR = new THREE.Vector3(1.0, 0.35, 0.65).normalize();
+
+// Набор реалистичной Земли — хостится локально в /public для мгновенной и надёжной загрузки
+// (бесоблачный день + ночные огни + облака + рельеф + маска воды/спекуляр)
+const TEX = {
+  day: '/textures/earth_day.jpg',
+  night: '/textures/earth_night.png',
+  clouds: '/textures/earth_clouds.png',
+  bump: '/textures/earth_bump.jpg',
+  water: '/textures/earth_specular.jpg',
+};
+
+// Переиспользуемые векторы — без аллокаций в кадре
 const _wp = new THREE.Vector3();
 const _normal = new THREE.Vector3();
 const _toCam = new THREE.Vector3();
@@ -36,35 +47,116 @@ function latLngToVec3(lat: number, lng: number, r = R) {
   );
 }
 
-// ── Земля + атмосфера ───────────────────────────────────────
+// ── Земля: PBR + кастомный шейдер (терминатор день/ночь, огни городов, блик океана) ──
 function Earth({ earthRef }: { earthRef: React.MutableRefObject<THREE.Mesh | null> }) {
-  const [map, bump] = useTexture([EARTH_TEX, BUMP_TEX]);
-  useEffect(() => {
-    map.colorSpace = THREE.SRGBColorSpace;
-  }, [map]);
+  const [day, night, bump, water] = useTexture([TEX.day, TEX.night, TEX.bump, TEX.water]);
+
+  const material = useMemo(() => {
+    day.colorSpace = THREE.SRGBColorSpace;
+    night.colorSpace = THREE.SRGBColorSpace;
+    [day, night, bump, water].forEach((t) => {
+      t.anisotropy = 8;
+      t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+    });
+
+    const mat = new THREE.MeshStandardMaterial({
+      map: day,
+      bumpMap: bump,
+      bumpScale: 0.6,
+      metalness: 0.1,
+      roughness: 0.85,
+    });
+
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uSunDir = { value: SUN_DIR };
+      shader.uniforms.uNightMap = { value: night };
+      shader.uniforms.uWaterMap = { value: water };
+      shader.uniforms.uNightIntensity = { value: 2.6 };
+
+      // world normal / position для расчёта терминатора
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nvarying vec3 vWNormal;\nvarying vec3 vWPos;'
+        )
+        .replace(
+          '#include <beginnormal_vertex>',
+          '#include <beginnormal_vertex>\nvWNormal = normalize(mat3(modelMatrix) * objectNormal);'
+        )
+        .replace(
+          '#include <begin_vertex>',
+          '#include <begin_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;'
+        );
+
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nuniform vec3 uSunDir;\nuniform sampler2D uNightMap;\nuniform sampler2D uWaterMap;\nuniform float uNightIntensity;\nvarying vec3 vWNormal;\nvarying vec3 vWPos;'
+        )
+        // Океан — гладкий и слегка металлический (зеркальный блик солнца), суша — матовая
+        .replace(
+          '#include <roughnessmap_fragment>',
+          'float waterMask = texture2D(uWaterMap, vMapUv).r;\nfloat roughnessFactor = mix(0.93, 0.22, waterMask);'
+        )
+        .replace(
+          '#include <metalnessmap_fragment>',
+          'float metalnessFactor = mix(0.0, 0.45, waterMask);'
+        )
+        // Огни городов на ночной стороне + тёплое свечение у терминатора
+        .replace(
+          '#include <emissivemap_fragment>',
+          `#include <emissivemap_fragment>
+          {
+            float ndl = dot(normalize(vWNormal), normalize(uSunDir));
+            float night = smoothstep(0.10, -0.30, ndl);
+            vec3 cityLights = texture2D(uNightMap, vMapUv).rgb;
+            cityLights = pow(cityLights, vec3(1.4)) * vec3(1.0, 0.85, 0.55);
+            totalEmissiveRadiance += cityLights * night * uNightIntensity;
+            // мягкое тёплое свечение тонкой полосой заката на самом терминаторе
+            float dusk = smoothstep(0.0, 0.16, ndl) * (1.0 - smoothstep(0.16, 0.40, ndl));
+            totalEmissiveRadiance += vec3(1.0, 0.52, 0.30) * dusk * 0.14;
+          }`
+        );
+    };
+
+    return mat;
+  }, [day, night, bump, water]);
 
   return (
-    <group>
-      <mesh ref={earthRef}>
-        <sphereGeometry args={[R, 96, 96]} />
-        <meshStandardMaterial
-          map={map}
-          bumpMap={bump}
-          bumpScale={0.018}
-          metalness={0.05}
-          roughness={0.95}
-        />
-      </mesh>
-      {/* Атмосферное свечение по лимбу */}
-      <mesh scale={1.022}>
-        <sphereGeometry args={[R, 64, 64]} />
-        <meshBasicMaterial color="#7ec8f0" transparent opacity={0.16} side={THREE.BackSide} blending={THREE.AdditiveBlending} />
-      </mesh>
-      <mesh scale={1.18}>
-        <sphereGeometry args={[R, 64, 64]} />
-        <meshBasicMaterial color="#2b76ab" transparent opacity={0.10} side={THREE.BackSide} blending={THREE.AdditiveBlending} />
-      </mesh>
-    </group>
+    <mesh ref={earthRef} material={material}>
+      <sphereGeometry args={[R, 128, 128]} />
+    </mesh>
+  );
+}
+
+// ── Облака: отдельная сфера, освещается тем же солнцем, медленный дрейф ──
+function Clouds() {
+  const ref = useRef<THREE.Mesh>(null);
+  const clouds = useTexture(TEX.clouds);
+
+  const material = useMemo(() => {
+    clouds.colorSpace = THREE.SRGBColorSpace;
+    clouds.anisotropy = 8;
+    const mat = new THREE.MeshStandardMaterial({
+      map: clouds,
+      alphaMap: clouds,
+      transparent: true,
+      depthWrite: false,
+      opacity: 0.92,
+      roughness: 1,
+      metalness: 0,
+    });
+    return mat;
+  }, [clouds]);
+
+  useFrame((_, delta) => {
+    if (ref.current) ref.current.rotation.y += delta * 0.012;
+  });
+
+  return (
+    <mesh ref={ref} material={material} scale={1.006}>
+      <sphereGeometry args={[R, 96, 96]} />
+    </mesh>
   );
 }
 
@@ -74,7 +166,7 @@ function Pin({
   lng,
   name,
   color,
-  flag,
+  flagCode,
   big,
   selected,
   hovered,
@@ -88,7 +180,7 @@ function Pin({
   lng: number;
   name: string;
   color: string;
-  flag?: string;
+  flagCode?: string;
   big?: boolean;
   selected?: boolean;
   hovered?: boolean;
@@ -102,16 +194,14 @@ function Pin({
   const haloRef = useRef<THREE.Mesh>(null);
   const pos = useMemo(() => latLngToVec3(lat, lng, R * 1.012), [lat, lng]);
   const active = selected || hovered;
-  const dotR = big ? 0.02 : 0.013;
+  const dotR = big ? 0.018 : 0.012;
 
   useFrame((state) => {
-    // Пульсация
     if (haloRef.current) {
       const t = (Math.sin(state.clock.elapsedTime * 2.2) + 1) / 2;
       haloRef.current.scale.setScalar(1 + t * (active ? 2.8 : big ? 2 : 1.4));
       (haloRef.current.material as THREE.MeshBasicMaterial).opacity = (1 - t) * 0.55;
     }
-    // Скрываем маркеры на обратной стороне планеты (без аллокаций)
     if (groupRef.current) {
       groupRef.current.getWorldPosition(_wp);
       _normal.copy(_wp).normalize();
@@ -130,7 +220,6 @@ function Pin({
         <sphereGeometry args={[dotR, 18, 18]} />
         <meshBasicMaterial color={color} transparent opacity={0.5} toneMapped={false} />
       </mesh>
-      {/* Невидимая зона клика побольше */}
       <mesh
         onClick={(e) => { e.stopPropagation(); onClick(); }}
         onPointerOver={(e) => { e.stopPropagation(); onOver(); document.body.style.cursor = 'pointer'; }}
@@ -140,7 +229,7 @@ function Pin({
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
 
-      {(flag || showName || active) && (
+      {(flagCode || showName || active) && (
         <Html
           center
           position={[0, big ? 0.05 : 0.035, 0]}
@@ -151,15 +240,23 @@ function Pin({
           <div
             onClick={(e) => { e.stopPropagation(); onClick(); }}
             style={{ pointerEvents: 'auto', cursor: 'pointer' }}
-            className={`flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold shadow-lg backdrop-blur transition-colors ${
+            className={`flex items-center gap-1.5 whitespace-nowrap rounded-full py-1 pl-1.5 pr-2.5 text-xs font-semibold shadow-lg backdrop-blur transition-colors ${
               active
                 ? 'bg-white text-slate-900 ring-2 ring-white/60'
-                : flag
-                ? 'bg-slate-900/70 text-white'
-                : 'bg-white/85 text-slate-800'
+                : flagCode
+                ? 'bg-slate-950/70 text-white ring-1 ring-white/15'
+                : 'bg-white/90 px-2.5 text-slate-800'
             }`}
           >
-            {flag && <span aria-hidden>{flag}</span>}
+            {flagCode && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={`https://flagcdn.com/${flagCode}.svg`}
+                alt=""
+                aria-hidden
+                className="h-3.5 w-5 rounded-[2px] object-cover ring-1 ring-white/30"
+              />
+            )}
             {(showName || active) && <span>{name}</span>}
           </div>
         </Html>
@@ -168,14 +265,26 @@ function Pin({
   );
 }
 
-// ── Камера ──────────────────────────────────────────────────
+// ── Камера: кинематографический вход + плавный фокус ─────────
 function CameraRig({ stage, focusDir }: { stage: Stage; focusDir: THREE.Vector3 | null }) {
   const { camera } = useThree();
   const target = useRef(new THREE.Vector3(0, 0, DIST.globe));
-  useFrame(() => {
+  const intro = useRef(0); // 0→1 на старте
+
+  useFrame((_, delta) => {
+    intro.current = Math.min(1, intro.current + delta * 0.5);
+    // ease-out cubic для входа
+    const e = 1 - Math.pow(1 - intro.current, 3);
+
     if (stage === 'globe' || !focusDir) target.current.set(0, 0, DIST.globe);
     else target.current.copy(focusDir).multiplyScalar(DIST[stage]);
-    camera.position.lerp(target.current, 0.05);
+
+    // на входе камера стартует дальше и приближается
+    const introDist = THREE.MathUtils.lerp(6.2, 0, 1 - e);
+    const dir = target.current.clone().normalize();
+    const wanted = target.current.clone().add(dir.multiplyScalar(introDist));
+
+    camera.position.lerp(wanted, stage === 'globe' && intro.current < 1 ? 0.12 : 0.055);
     camera.lookAt(0, 0, 0);
   });
   return null;
@@ -208,7 +317,7 @@ function Scene({
   const country = countryId ? getCountry(countryId) : null;
 
   useFrame((_, delta) => {
-    if (spin.current && spinning) spin.current.rotation.y += delta * 0.045;
+    if (spin.current && spinning) spin.current.rotation.y += delta * 0.035;
   });
 
   useEffect(() => {
@@ -231,15 +340,16 @@ function Scene({
 
   return (
     <>
-      <ambientLight intensity={0.32} />
-      <directionalLight position={[-4, 1.5, 3]} intensity={2.1} color="#fff4e6" />
-      <directionalLight position={[3, -1, -2]} intensity={0.35} color="#9ec9ff" />
-      <Stars radius={60} depth={40} count={2600} factor={4.5} saturation={0} fade speed={0.5} />
+      {/* почти чёрный космос + холодный заполняющий свет от звёзд */}
+      <ambientLight intensity={0.08} color="#9bb8ff" />
+      {/* Солнце — основной направленный источник, совпадает с терминатором */}
+      <directionalLight position={SUN_DIR.clone().multiplyScalar(8)} intensity={3.4} color="#fff6ea" />
+      <Stars radius={70} depth={50} count={3500} factor={4} saturation={0} fade speed={0.4} />
 
-      {/* tilt → spin → Earth + pins */}
       <group rotation={[TILT, 0, 0]}>
         <group ref={spin}>
           <Earth earthRef={earthRef} />
+          <Clouds />
 
           {stage === 'globe' &&
             countries.map((c) => (
@@ -249,7 +359,7 @@ function Scene({
                 lng={c.lng}
                 name={c.name}
                 color={c.accent}
-                flag={c.flag}
+                flagCode={c.id}
                 big
                 showName={false}
                 hovered={hoveredId === c.id}
@@ -297,9 +407,9 @@ export function GlobeScene(props: {
 }) {
   return (
     <Canvas
-      camera={{ position: [0, 0, DIST.globe], fov: 34 }}
+      camera={{ position: [0, 0, 6.2], fov: 32 }}
       dpr={[1, 2]}
-      gl={{ antialias: true, alpha: true }}
+      gl={{ antialias: true, alpha: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.05 }}
       onPointerMissed={() => { document.body.style.cursor = 'auto'; }}
     >
       <AdaptiveDpr pixelated />

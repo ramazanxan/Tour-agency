@@ -55,55 +55,64 @@ export default async function TourPage({ params }: { params: { slug: string } })
     )
     .slice(0, 3);
 
+  const typeLabel = TOUR_TYPE_LABELS[tour.type].replace(/^\S+\s/, '');
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-6">
       {/* Breadcrumb */}
-      <nav className="mb-4 text-sm text-slate-400">
-        <Link href="/" className="hover:text-lake-600">
-          Главная
-        </Link>{' '}
-        ·{' '}
-        <Link href="/tours" className="hover:text-lake-600">
-          Каталог
-        </Link>{' '}
-        · <span className="text-slate-600">{tour.title}</span>
+      <nav className="mb-5 flex items-center gap-1.5 text-sm text-slate-400">
+        <Link href="/" className="transition-colors hover:text-lake-600">Главная</Link>
+        <span className="text-slate-300">/</span>
+        <Link href="/tours" className="transition-colors hover:text-lake-600">Каталог</Link>
+        <span className="text-slate-300">/</span>
+        <span className="truncate text-slate-600">{tour.title}</span>
       </nav>
 
-      {/* Gallery */}
-      <div className="mb-6 grid gap-2 sm:grid-cols-4 sm:grid-rows-2">
-        <div className="relative aspect-[4/3] overflow-hidden rounded-2xl sm:col-span-2 sm:row-span-2 sm:aspect-auto">
+      {/* Gallery — bento */}
+      <div className="mb-8 grid gap-2.5 sm:grid-cols-4 sm:grid-rows-2">
+        <div className="group relative aspect-[4/3] overflow-hidden rounded-3xl sm:col-span-2 sm:row-span-2 sm:aspect-auto">
           {tour.gallery[0] && (
             <Image
               src={tour.gallery[0].url}
               alt={tour.title}
               fill
               sizes="(max-width:768px)100vw,50vw"
-              className="object-cover"
+              className="object-cover transition-transform duration-700 group-hover:scale-105"
               priority
             />
           )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
         </div>
-        {tour.gallery.slice(1, 5).map((m, i) => (
-          <div
-            key={i}
-            className="relative hidden aspect-[4/3] overflow-hidden rounded-xl sm:block"
-          >
-            <Image
-              src={m.url}
-              alt={`${tour.title} ${i + 2}`}
-              fill
-              sizes="25vw"
-              className="object-cover"
-            />
-          </div>
-        ))}
+        {tour.gallery.slice(1, 5).map((m, i, arr) => {
+          const more = tour.gallery.length - 5;
+          const isLast = i === arr.length - 1 && more > 0;
+          return (
+            <div
+              key={i}
+              className="group relative hidden aspect-[4/3] overflow-hidden rounded-2xl sm:block"
+            >
+              <Image
+                src={m.url}
+                alt={`${tour.title} ${i + 2}`}
+                fill
+                sizes="25vw"
+                className="object-cover transition-transform duration-700 group-hover:scale-105"
+              />
+              {isLast && (
+                <div className="absolute inset-0 flex items-center justify-center bg-slate-950/55 text-lg font-semibold text-white backdrop-blur-[2px]">
+                  +{more} фото
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
+      <div className="grid gap-10 lg:grid-cols-[1fr_380px]">
         {/* Main content */}
-        <div>
-          <div className="mb-2 flex flex-wrap gap-2">
-            <Badge variant="lake">{TOUR_TYPE_LABELS[tour.type]}</Badge>
+        <div className="min-w-0">
+          <div className="mb-3 flex flex-wrap gap-2">
+            <Badge variant="lake">{typeLabel}</Badge>
             <Badge variant="outline">
               <Mountain size={12} /> {DIFFICULTY_LABELS[tour.difficulty]}
             </Badge>
@@ -114,49 +123,55 @@ export default async function TourPage({ params }: { params: { slug: string } })
             {tour.kidsFriendly && <Badge>Можно с детьми</Badge>}
           </div>
 
-          <h1 className="text-2xl font-extrabold text-slate-900 sm:text-3xl">
+          <h1 className="font-display text-3xl font-extrabold tracking-tight text-slate-900 sm:text-[2.5rem] sm:leading-[1.1]">
             {tour.title}
           </h1>
 
-          <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-slate-500">
+          <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-slate-500">
             {dest && (
-              <span className="flex items-center gap-1">
-                <MapPin size={15} /> {dest.name}, {dest.region}
+              <span className="flex items-center gap-1.5">
+                <MapPin size={15} className="text-sunset-500" /> {dest.name}, {dest.region}
               </span>
             )}
-            <span className="flex items-center gap-1">
-              <Star size={15} className="fill-amber-400 text-amber-400" /> {tour.rating}
-              {tour.reviewsCount > 0 && ` · ${tour.reviewsCount} отзывов`}
+            <span className="flex items-center gap-1.5">
+              <Star size={15} className="fill-amber-400 text-amber-400" /> <b className="font-semibold text-slate-700">{tour.rating}</b>
+              {tour.reviewsCount > 0 && <span className="text-slate-400">· {tour.reviewsCount} отзывов</span>}
             </span>
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-1.5">
               <Languages size={15} /> {tour.guideLangs.join(' / ')}
             </span>
           </div>
 
           {/* Программа */}
-          <section className="mt-8">
-            <h2 className="mb-3 text-xl font-bold text-slate-900">Программа тура</h2>
+          <section className="mt-10">
+            <h2 className="mb-4 font-display text-xl font-bold text-slate-900">Программа по дням</h2>
             <ProgramAccordion program={tour.program} />
           </section>
 
           {/* Включено / не включено */}
-          <section className="mt-8 grid gap-6 sm:grid-cols-2">
-            <div>
-              <h3 className="mb-3 text-lg font-bold text-slate-900">Что включено</h3>
-              <ul className="space-y-2">
+          <section className="mt-10 grid gap-4 sm:grid-cols-2">
+            <div className="rounded-3xl border border-slate-200/70 bg-white p-5">
+              <h3 className="mb-4 font-display text-base font-bold text-slate-900">Что включено</h3>
+              <ul className="space-y-2.5">
                 {tour.included.map((x) => (
-                  <li key={x} className="flex items-start gap-2 text-sm text-slate-700">
-                    <Check size={18} className="mt-0.5 shrink-0 text-emerald-500" /> {x}
+                  <li key={x} className="flex items-start gap-2.5 text-sm text-slate-700">
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-50">
+                      <Check size={13} strokeWidth={2.5} className="text-emerald-600" />
+                    </span>
+                    {x}
                   </li>
                 ))}
               </ul>
             </div>
-            <div>
-              <h3 className="mb-3 text-lg font-bold text-slate-900">Не включено</h3>
-              <ul className="space-y-2">
+            <div className="rounded-3xl border border-slate-200/70 bg-white p-5">
+              <h3 className="mb-4 font-display text-base font-bold text-slate-900">Не включено</h3>
+              <ul className="space-y-2.5">
                 {tour.excluded.map((x) => (
-                  <li key={x} className="flex items-start gap-2 text-sm text-slate-700">
-                    <X size={18} className="mt-0.5 shrink-0 text-rose-400" /> {x}
+                  <li key={x} className="flex items-start gap-2.5 text-sm text-slate-500">
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-rose-50">
+                      <X size={13} strokeWidth={2.5} className="text-rose-500" />
+                    </span>
+                    {x}
                   </li>
                 ))}
               </ul>
@@ -164,15 +179,15 @@ export default async function TourPage({ params }: { params: { slug: string } })
           </section>
 
           {/* Что взять */}
-          <section className="mt-8">
-            <h3 className="mb-3 flex items-center gap-2 text-lg font-bold text-slate-900">
+          <section className="mt-10">
+            <h3 className="mb-4 flex items-center gap-2 font-display text-xl font-bold text-slate-900">
               <Backpack size={20} className="text-lake-600" /> Что взять с собой
             </h3>
             <div className="flex flex-wrap gap-2">
               {tour.packingList.map((x) => (
                 <span
                   key={x}
-                  className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm text-slate-700"
+                  className="rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-sm text-slate-600"
                 >
                   {x}
                 </span>
@@ -181,25 +196,27 @@ export default async function TourPage({ params }: { params: { slug: string } })
           </section>
 
           {/* Точка сбора */}
-          <section className="mt-8">
-            <h3 className="mb-3 text-lg font-bold text-slate-900">Точка сбора</h3>
+          <section className="mt-10">
+            <h3 className="mb-4 font-display text-xl font-bold text-slate-900">Точка сбора</h3>
             <p className="mb-3 flex items-center gap-1.5 text-sm text-slate-600">
               <MapPin size={16} className="text-sunset-500" /> {tour.meetingPoint}
             </p>
-            <MeetingMap
-              lat={tour.meetingLat}
-              lng={tour.meetingLng}
-              label={tour.meetingPoint}
-            />
+            <div className="overflow-hidden rounded-3xl border border-slate-200/70">
+              <MeetingMap
+                lat={tour.meetingLat}
+                lng={tour.meetingLng}
+                label={tour.meetingPoint}
+              />
+            </div>
           </section>
 
           {/* Компания */}
           {company && (
-            <section className="mt-8">
-              <h3 className="mb-3 text-lg font-bold text-slate-900">Организатор</h3>
-              <div className="flex items-center gap-4 rounded-2xl border border-slate-100 bg-white p-4">
+            <section className="mt-10">
+              <h3 className="mb-4 font-display text-xl font-bold text-slate-900">Организатор</h3>
+              <div className="flex items-center gap-4 rounded-3xl border border-slate-200/70 bg-white p-5">
                 {company.logoUrl && (
-                  <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl">
+                  <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl ring-1 ring-slate-100">
                     <Image
                       src={company.logoUrl}
                       alt={company.name}
@@ -209,20 +226,20 @@ export default async function TourPage({ params }: { params: { slug: string } })
                     />
                   </div>
                 )}
-                <div className="flex-1">
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <h4 className="font-bold text-slate-900">{company.name}</h4>
+                    <h4 className="font-display font-bold text-slate-900">{company.name}</h4>
                     {company.isVerified && (
                       <Badge variant="lake">
                         <ShieldCheck size={12} /> Верифицирована
                       </Badge>
                     )}
                   </div>
-                  <p className="text-sm text-slate-500">
-                    ⭐ {company.rating}
-                    {company.toursDone > 0 && ` · ${company.toursDone} проведённых туров`}
+                  <p className="mt-0.5 flex items-center gap-1 text-sm text-slate-500">
+                    <Star size={13} className="fill-amber-400 text-amber-400" /> {company.rating}
+                    {company.toursDone > 0 && <span className="text-slate-400">· {company.toursDone} проведённых туров</span>}
                   </p>
-                  <p className="mt-1 line-clamp-2 text-sm text-slate-600">
+                  <p className="mt-1.5 line-clamp-2 text-sm text-slate-600">
                     {company.description}
                   </p>
                 </div>
@@ -239,8 +256,8 @@ export default async function TourPage({ params }: { params: { slug: string } })
 
       {/* Похожие туры */}
       {similar.length > 0 && (
-        <section className="mt-12">
-          <h2 className="mb-5 text-xl font-bold text-slate-900">Похожие туры</h2>
+        <section className="mt-16">
+          <h2 className="mb-6 font-display text-2xl font-bold tracking-tight text-slate-900">Похожие туры</h2>
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {similar.map((t) => (
               <TourCard key={t.id} tour={t} />

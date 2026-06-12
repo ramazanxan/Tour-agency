@@ -1,19 +1,19 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Check, Copy, Eye, EyeOff, KeyRound, LogOut, Plus, ShieldCheck, Trash2, X } from 'lucide-react';
+import { Check, Copy, Eye, EyeOff, KeyRound, LogOut, Plus, ShieldCheck, Trash2, X, Building2, Map, MapPin, Users, BarChart3 } from 'lucide-react';
 import { useAuth, type AgencyRecord } from '@/lib/auth';
 import { tours as mockTours, destinations } from '@/lib/mock-data';
 import { formatPrice } from '@/lib/utils';
 
 type Tab = 'agencies' | 'tours' | 'destinations' | 'tourists' | 'analytics';
 
-const TABS: [Tab, string][] = [
-  ['agencies', 'Турагентства'],
-  ['tours', 'Туры'],
-  ['destinations', 'Направления'],
-  ['tourists', 'Туристы'],
-  ['analytics', 'Аналитика'],
+const TABS: { id: Tab; label: string; Icon: typeof Building2 }[] = [
+  { id: 'agencies', label: 'Турагентства', Icon: Building2 },
+  { id: 'tours', label: 'Туры', Icon: Map },
+  { id: 'destinations', label: 'Направления', Icon: MapPin },
+  { id: 'tourists', label: 'Туристы', Icon: Users },
+  { id: 'analytics', label: 'Аналитика', Icon: BarChart3 },
 ];
 
 function genPassword() {
@@ -26,35 +26,42 @@ export function AdminClient() {
   const [tab, setTab] = useState<Tab>('agencies');
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-extrabold text-slate-900">
-            <ShieldCheck className="text-slate-700" /> Админ-панель
-          </h1>
-          <p className="text-sm text-slate-500">{account?.name} · управление платформой Jolu</p>
-        </div>
-        <button onClick={logout} className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
-          <LogOut size={15} /> Выйти
-        </button>
-      </div>
-
-      <div className="mb-5 flex gap-1 overflow-x-auto border-b border-slate-100">
-        {TABS.map(([t, l]) => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`-mb-px shrink-0 border-b-2 px-4 py-2.5 text-sm font-semibold ${tab === t ? 'border-lake-600 text-lake-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-            {l}{t === 'agencies' && agencies.length ? ` (${agencies.length})` : ''}
+    <div className="min-h-[calc(100vh-4rem)] bg-slate-50/60">
+      <div className="mx-auto max-w-6xl px-4 py-8">
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="mb-1 inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+              <ShieldCheck size={13} className="text-slate-600" /> Администрирование
+            </p>
+            <h1 className="font-display text-3xl font-extrabold tracking-tight text-slate-900">Панель платформы Jolu</h1>
+            <p className="text-sm text-slate-500">{account?.name} · полный контроль над платформой</p>
+          </div>
+          <button onClick={logout} className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50">
+            <LogOut size={15} /> Выйти
           </button>
-        ))}
-      </div>
+        </div>
 
-      {tab === 'agencies' && (
-        <AgenciesTab agencies={agencies} createAgency={createAgency} updateAgency={updateAgency} deleteAgency={deleteAgency} />
-      )}
-      {tab === 'tours' && <ToursTab />}
-      {tab === 'destinations' && <DestinationsTab />}
-      {tab === 'tourists' && <TouristsTab tourists={tourists} />}
-      {tab === 'analytics' && <AnalyticsTab agencyCount={agencies.length} touristCount={tourists.length} />}
+        <div className="no-scrollbar mb-6 flex gap-1.5 overflow-x-auto rounded-2xl border border-slate-200/70 bg-white p-1.5 shadow-sm">
+          {TABS.map(({ id, label, Icon }) => (
+            <button key={id} onClick={() => setTab(id)}
+              className={`flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition-all ${
+                tab === id ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+              }`}>
+              <Icon size={16} className={tab === id ? 'text-sunset-300' : 'text-slate-400'} />
+              {label}
+              {id === 'agencies' && agencies.length ? <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-slate-200 px-1.5 text-[11px] font-bold text-slate-600">{agencies.length}</span> : null}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'agencies' && (
+          <AgenciesTab agencies={agencies} createAgency={createAgency} updateAgency={updateAgency} deleteAgency={deleteAgency} />
+        )}
+        {tab === 'tours' && <ToursTab />}
+        {tab === 'destinations' && <DestinationsTab />}
+        {tab === 'tourists' && <TouristsTab tourists={tourists} />}
+        {tab === 'analytics' && <AnalyticsTab agencyCount={agencies.length} touristCount={tourists.length} />}
+      </div>
     </div>
   );
 }
@@ -122,7 +129,7 @@ function AgenciesTab({
               <div className="flex items-center gap-2">
                 <button onClick={() => updateAgency(a.login, { verified: !a.verified })}
                   className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
-                  {a.verified ? 'Снять ✓' : 'Верифицировать'}
+                  {a.verified ? 'Снять отметку' : 'Верифицировать'}
                 </button>
                 <button onClick={() => { if (confirm(`Удалить «${a.companyName}»?`)) deleteAgency(a.login); }}
                   className="rounded-lg border border-rose-200 p-2 text-rose-500 hover:bg-rose-50">

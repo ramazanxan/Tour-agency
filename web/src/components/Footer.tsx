@@ -1,53 +1,78 @@
 import Link from 'next/link';
-import { Mountain, Send } from 'lucide-react';
+import { Mountain, Send, ArrowUpRight } from 'lucide-react';
 
 export function Footer() {
   const botUser = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? 'jolu_bot';
+  const year = new Date().getFullYear();
+
   return (
-    <footer className="border-t border-slate-100 bg-white">
-      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:grid-cols-2 md:grid-cols-4">
-        <div>
-          <div className="mb-3 flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-lake-600 text-white">
-              <Mountain size={18} />
-            </span>
-            <span className="text-lg font-extrabold text-lake-800">Jolu</span>
+    <footer className="relative overflow-hidden bg-slate-950 text-slate-300">
+      {/* мягкое цветное сияние */}
+      <div className="pointer-events-none absolute -left-32 top-0 h-80 w-80 rounded-full bg-lake-600/15 blur-[100px]" />
+      <div className="pointer-events-none absolute -right-24 bottom-0 h-72 w-72 rounded-full bg-sunset-600/10 blur-[100px]" />
+
+      <div className="relative mx-auto max-w-6xl px-4 pb-10 pt-14">
+        <div className="grid gap-10 sm:grid-cols-2 md:grid-cols-[1.5fr_1fr_1fr_1.2fr]">
+          <div>
+            <div className="mb-4 flex items-center gap-2.5">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-lake-500 to-lake-700 text-white shadow-lg shadow-lake-900/40">
+                <Mountain size={19} />
+              </span>
+              <span className="font-display text-xl font-extrabold tracking-tight text-white">Jolu</span>
+            </div>
+            <p className="max-w-xs text-sm leading-relaxed text-slate-400">
+              Путешествия по Центральной Азии в одном месте. <span className="text-slate-300">Жол</span> — путь, дорога.
+            </p>
           </div>
-          <p className="text-sm text-slate-500">
-            Туры по Кыргызстану в одном месте. Жол — путь, дорога.
+
+          <div>
+            <h4 className="mb-4 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Туристам</h4>
+            <ul className="space-y-2.5 text-sm">
+              <FootLink href="/tours">Каталог туров</FootLink>
+              <FootLink href="/#destinations">Направления</FootLink>
+              <FootLink href="/account">Мои брони</FootLink>
+            </ul>
+          </div>
+
+          <div>
+            <h4 className="mb-4 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Компаниям</h4>
+            <ul className="space-y-2.5 text-sm">
+              <FootLink href="/for-companies">Разместить туры</FootLink>
+              <FootLink href="/dashboard">Кабинет компании</FootLink>
+            </ul>
+          </div>
+
+          <div>
+            <h4 className="mb-4 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Связаться</h4>
+            <a
+              href={`https://t.me/${botUser}`}
+              className="group inline-flex items-center gap-2.5 rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-white transition-all hover:border-white/20 hover:bg-white/10"
+            >
+              <Send size={16} className="text-lake-400" /> @{botUser}
+              <ArrowUpRight size={14} className="text-slate-500 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+            </a>
+          </div>
+        </div>
+
+        <div className="mt-12 flex flex-col items-center justify-between gap-3 border-t border-white/10 pt-6 text-xs text-slate-500 sm:flex-row">
+          <p>© {year} Jolu. Все права защищены.</p>
+          <p className="flex items-center gap-1.5">
+            Сделано в Кыргызстане
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="https://flagcdn.com/kg.svg" alt="" aria-hidden className="h-3 w-[18px] rounded-[2px] object-cover ring-1 ring-white/15" />
           </p>
         </div>
-
-        <div>
-          <h4 className="mb-3 text-sm font-semibold text-slate-700">Туристам</h4>
-          <ul className="space-y-2 text-sm text-slate-500">
-            <li><Link href="/tours" className="hover:text-lake-700">Каталог туров</Link></li>
-            <li><Link href="/#destinations" className="hover:text-lake-700">Направления</Link></li>
-            <li><Link href="/account" className="hover:text-lake-700">Мои брони</Link></li>
-          </ul>
-        </div>
-
-        <div>
-          <h4 className="mb-3 text-sm font-semibold text-slate-700">Компаниям</h4>
-          <ul className="space-y-2 text-sm text-slate-500">
-            <li><Link href="/for-companies" className="hover:text-lake-700">Разместить туры</Link></li>
-            <li><Link href="/dashboard" className="hover:text-lake-700">Кабинет компании</Link></li>
-          </ul>
-        </div>
-
-        <div>
-          <h4 className="mb-3 text-sm font-semibold text-slate-700">Telegram</h4>
-          <a
-            href={`https://t.me/${botUser}`}
-            className="inline-flex items-center gap-2 rounded-xl bg-lake-50 px-3 py-2 text-sm font-medium text-lake-700 hover:bg-lake-100"
-          >
-            <Send size={16} /> @{botUser}
-          </a>
-        </div>
-      </div>
-      <div className="border-t border-slate-100 py-4 text-center text-xs text-slate-400">
-        © {new Date().getFullYear()} Jolu. Сделано в Кыргызстане 🇰🇬
       </div>
     </footer>
+  );
+}
+
+function FootLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <li>
+      <Link href={href} className="text-slate-400 transition-colors hover:text-white">
+        {children}
+      </Link>
+    </li>
   );
 }

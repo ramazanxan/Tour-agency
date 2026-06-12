@@ -19,11 +19,25 @@ export interface AgencyTour {
   createdAt: string;
 }
 
+export interface CompanySocials {
+  instagram: string;
+  telegram: string;
+  whatsapp: string;
+  facebook: string;
+  youtube: string;
+  tiktok: string;
+  website: string;
+}
+
+export const EMPTY_SOCIALS: CompanySocials = {
+  instagram: '', telegram: '', whatsapp: '', facebook: '', youtube: '', tiktok: '', website: '',
+};
+
 export interface CompanyProfile {
   companyName: string;
   description: string;
   phone: string;
-  instagram: string;
+  socials: CompanySocials;
 }
 
 const toursKey = (companyId: string) => `jolu.company.${companyId}.tours`;
@@ -61,12 +75,14 @@ export function setTourStatus(companyId: string, id: string, status: AgencyTour[
 }
 
 export function getProfile(companyId: string, fallbackName = ''): CompanyProfile {
-  return read<CompanyProfile>(profileKey(companyId), {
-    companyName: fallbackName,
-    description: '',
-    phone: '',
-    instagram: '',
-  });
+  const raw = read<Partial<CompanyProfile> & { instagram?: string }>(profileKey(companyId), {});
+  return {
+    companyName: raw.companyName || fallbackName,
+    description: raw.description || '',
+    phone: raw.phone || '',
+    // миграция старого поля instagram → socials
+    socials: { ...EMPTY_SOCIALS, ...(raw.socials ?? {}), instagram: raw.socials?.instagram ?? raw.instagram ?? '' },
+  };
 }
 export function saveProfile(companyId: string, profile: CompanyProfile) {
   write(profileKey(companyId), profile);

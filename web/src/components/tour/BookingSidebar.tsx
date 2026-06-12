@@ -2,11 +2,10 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { Calendar, Check } from 'lucide-react';
+import { Calendar, Check, ShieldCheck, Clock, ArrowRight } from 'lucide-react';
 import type { Tour } from '@/lib/types';
 import { formatPrice, formatDateRange } from '@/lib/utils';
 import { GroupProgress } from '@/components/ui/GroupProgress';
-import { Button } from '@/components/ui/Button';
 
 export function BookingSidebar({ tour }: { tour: Tour }) {
   const router = useRouter();
@@ -18,68 +17,83 @@ export function BookingSidebar({ tour }: { tour: Tour }) {
   const dep = future.find((d) => d.id === selected);
 
   return (
-    <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-      <div className="mb-4 flex items-baseline gap-2">
-        <span className="text-sm text-slate-400">от</span>
-        <span className="text-2xl font-extrabold text-slate-900">
-          {formatPrice(tour.price, tour.currency)}
-        </span>
-        <span className="text-sm text-slate-400">/ чел.</span>
+    <div className="overflow-hidden rounded-3xl border border-slate-200/70 bg-white shadow-[0_18px_50px_-24px_rgba(15,42,64,0.32)]">
+      {/* Цена */}
+      <div className="border-b border-slate-100 bg-gradient-to-br from-white to-slate-50/80 px-6 pb-5 pt-6">
+        <div className="flex items-baseline gap-2">
+          <span className="text-sm text-slate-400">от</span>
+          <span className="font-display text-[2rem] font-extrabold tracking-tight text-slate-900">
+            {formatPrice(tour.price, tour.currency)}
+          </span>
+          <span className="text-sm text-slate-400">/ чел.</span>
+        </div>
       </div>
 
-      <div className="mb-4">
-        <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-          <Calendar size={16} /> Выберите дату выезда
+      <div className="px-6 py-5">
+        <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800">
+          <Calendar size={16} className="text-sunset-500" /> Дата выезда
         </p>
         <div className="space-y-2">
           {future.length === 0 && (
-            <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-500">
+            <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">
               Ближайшие даты уточняются. Оставьте заявку — компания свяжется с вами.
             </p>
           )}
           {future.map((d) => {
             const left = d.seatsTotal - d.seatsTaken;
             const active = d.id === selected;
+            const sold = left <= 0;
             return (
               <button
                 key={d.id}
                 onClick={() => setSelected(d.id)}
-                disabled={left <= 0}
-                className={`flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left text-sm transition-colors ${
-                  active ? 'border-lake-500 bg-lake-50' : 'border-slate-200 hover:border-lake-300'
-                } ${left <= 0 ? 'cursor-not-allowed opacity-50' : ''}`}
+                disabled={sold}
+                className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm transition-all ${
+                  active
+                    ? 'border-slate-900 bg-slate-900/[0.03] ring-1 ring-slate-900/10'
+                    : 'border-slate-200 hover:border-slate-300'
+                } ${sold ? 'cursor-not-allowed opacity-45' : ''}`}
               >
-                <span className="font-medium text-slate-800">
+                <span className="font-semibold text-slate-800">
                   {formatDateRange(d.dateStart, d.dateEnd)}
                 </span>
-                <span className={left <= 3 ? 'text-rose-600' : 'text-slate-500'}>
-                  {left <= 0 ? 'мест нет' : `${left} мест`}
+                <span className="flex items-center gap-2">
+                  <span className={`text-xs font-medium ${left <= 3 && !sold ? 'text-sunset-600' : 'text-slate-400'}`}>
+                    {sold ? 'мест нет' : `${left} мест`}
+                  </span>
+                  <span className={`flex h-5 w-5 items-center justify-center rounded-full transition ${active ? 'bg-slate-900 text-white' : 'bg-slate-100 text-transparent'}`}>
+                    <Check size={12} strokeWidth={3} />
+                  </span>
                 </span>
-                {active && <Check size={16} className="text-lake-600" />}
               </button>
             );
           })}
         </div>
-      </div>
 
-      {dep && (
-        <div className="mb-4">
-          <GroupProgress taken={dep.seatsTaken} total={dep.seatsTotal} min={dep.minGroupSize} />
+        {dep && (
+          <div className="mt-4">
+            <GroupProgress taken={dep.seatsTaken} total={dep.seatsTotal} min={dep.minGroupSize} />
+          </div>
+        )}
+
+        <button
+          disabled={!dep}
+          onClick={() => router.push(`/booking/${tour.slug}?dep=${selected}`)}
+          className="group mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-sunset-500 to-sunset-600 py-4 font-semibold text-white shadow-lg shadow-sunset-500/25 transition-all hover:shadow-xl hover:shadow-sunset-500/30 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+        >
+          Забронировать
+          <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />
+        </button>
+
+        <div className="mt-4 space-y-2">
+          <p className="flex items-center gap-2 text-xs text-slate-500">
+            <ShieldCheck size={14} className="text-emerald-500" /> Бронь без предоплаты
+          </p>
+          <p className="flex items-center gap-2 text-xs text-slate-500">
+            <Clock size={14} className="text-lake-500" /> Подтверждение в течение 24 часов
+          </p>
         </div>
-      )}
-
-      <Button
-        size="lg"
-        className="w-full"
-        disabled={!dep}
-        onClick={() => router.push(`/booking/${tour.slug}?dep=${selected}`)}
-      >
-        Забронировать
-      </Button>
-
-      <p className="mt-3 text-center text-xs text-slate-400">
-        Бронь без предоплаты. Подтверждение в течение 24 часов.
-      </p>
+      </div>
     </div>
   );
 }

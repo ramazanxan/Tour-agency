@@ -4,14 +4,28 @@
 
 :root {
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Manrope', var(--font-sans);
 }
 
 html {
   scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 body {
   @apply bg-peak text-slate-800 antialiased;
+}
+
+/* Премиальные заголовки по умолчанию: дисплейная гарнитура + плотный трекинг */
+h1, h2, h3 {
+  font-family: var(--font-display);
+  letter-spacing: -0.025em;
+}
+
+::selection {
+  background: #fc5212;
+  color: #fff;
 }
 
 /* Тонкая «озёрная» полоска под hero и секциями */

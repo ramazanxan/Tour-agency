@@ -102,15 +102,31 @@ export default function HomePage() {
       </section>
 
       {/* CTA компаниям */}
-      <section className="bg-lake-700 py-16 text-white">
-        <Reveal className="mx-auto flex max-w-6xl flex-col items-center gap-4 px-4 text-center">
-          <h2 className="text-2xl font-extrabold sm:text-3xl">Вы — туркомпания?</h2>
-          <p className="max-w-xl text-white/85">
-            Разместите туры бесплатно, получайте заявки и управляйте ими в одном кабинете.
-          </p>
-          <Link href="/for-companies" className="rounded-xl bg-sunset-500 px-6 py-3 font-semibold text-white hover:bg-sunset-600">
-            Разместить туры
-          </Link>
+      <section className="mx-auto max-w-6xl px-4 py-16">
+        <Reveal>
+          <div className="relative overflow-hidden rounded-[2rem] bg-slate-950 px-6 py-14 text-center sm:px-12">
+            {/* сияние */}
+            <div className="pointer-events-none absolute -left-20 -top-20 h-72 w-72 rounded-full bg-lake-500/20 blur-[90px]" />
+            <div className="pointer-events-none absolute -bottom-24 -right-10 h-72 w-72 rounded-full bg-sunset-500/20 blur-[90px]" />
+            <div className="relative mx-auto flex max-w-2xl flex-col items-center gap-5">
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.28em] text-sunset-200">
+                <span className="h-1 w-1 rounded-full bg-sunset-400" /> Для туркомпаний
+              </span>
+              <h2 className="font-display text-3xl font-extrabold tracking-tight text-white sm:text-[2.6rem] sm:leading-[1.05]">
+                Разместите туры и получайте заявки
+              </h2>
+              <p className="max-w-xl text-white/65">
+                Бесплатная публикация, единый кабинет для броней и заявок, прямой контакт с туристами. Без комиссии за размещение.
+              </p>
+              <Link
+                href="/for-companies"
+                className="group mt-2 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-sunset-500 to-sunset-600 px-7 py-3.5 font-semibold text-white shadow-lg shadow-sunset-500/25 transition-all hover:shadow-xl hover:shadow-sunset-500/30"
+              >
+                Разместить туры
+                <MapPin size={17} className="transition-transform group-hover:-translate-y-0.5" />
+              </Link>
+            </div>
+          </div>
         </Reveal>
       </section>
     </>
