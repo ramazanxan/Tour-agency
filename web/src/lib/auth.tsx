@@ -12,7 +12,7 @@ export interface Account {
 }
 
 export const ROLE_META: Record<Role, { label: string; home: string; emoji: string }> = {
-  tourist: { label: 'Турист', home: '/account', emoji: '🧭' },
+  tourist: { label: 'Турист', home: '/', emoji: '🧭' },
   company: { label: 'Туркомпания', home: '/dashboard', emoji: '🏔️' },
   admin: { label: 'Админ', home: '/admin', emoji: '🛡️' },
 };

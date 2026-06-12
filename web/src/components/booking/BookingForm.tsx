@@ -60,11 +60,11 @@ export function BookingForm({ tour, departure }: { tour: Tour; departure: Depart
         </div>
         <h2 className="text-xl font-extrabold text-slate-900">Заявка отправлена!</h2>
         <p className="mt-2 text-slate-600">
-          Компания <b>подтвердит бронь в течение 24 часов</b>. Статус придёт в Telegram и по SMS.
+          Компания <b>свяжется с вами в течение 24 часов</b> по указанному телефону, чтобы подтвердить бронь.
         </p>
         <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
-          <Link href="/account"><Button variant="lake">Мои брони</Button></Link>
-          <Link href="/tours"><Button variant="outline">Другие туры</Button></Link>
+          <Link href="/tours"><Button variant="lake">Смотреть другие туры</Button></Link>
+          <Link href="/"><Button variant="outline">На главную</Button></Link>
         </div>
       </div>
     );
@@ -107,7 +107,7 @@ export function BookingForm({ tour, departure }: { tour: Tour; departure: Depart
               className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-lake-400" />
           </div>
           <p className="mt-2 text-xs text-slate-400">
-            Регистрация не нужна — аккаунт создастся автоматически по номеру телефона.
+            Регистрация не нужна — просто оставьте имя и телефон, компания свяжется с вами.
           </p>
         </div>
       </div>

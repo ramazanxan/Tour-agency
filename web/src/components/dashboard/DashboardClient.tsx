@@ -107,6 +107,9 @@ function RequestsTab({ bookings, setBookings }: { bookings: BookingRow[]; setBoo
   function setStatus(id: string, status: BookingStatus) {
     setBookings(bookings.map((b) => (b.id === id ? { ...b, status } : b)));
   }
+  function remove(id: string) {
+    if (confirm('Удалить заявку? Действие необратимо.')) setBookings(bookings.filter((b) => b.id !== id));
+  }
   const list = filter === 'all' ? bookings : bookings.filter((b) => b.status === filter);
   return (
     <>
@@ -119,14 +122,14 @@ function RequestsTab({ bookings, setBookings }: { bookings: BookingRow[]; setBoo
         ))}
       </div>
       <div className="space-y-3">
-        {list.map((b) => <RequestCard key={b.id} booking={b} onStatus={setStatus} />)}
+        {list.map((b) => <RequestCard key={b.id} booking={b} onStatus={setStatus} onRemove={remove} />)}
         {list.length === 0 && <p className="py-10 text-center text-slate-400">Заявок с этим статусом нет.</p>}
       </div>
     </>
   );
 }
 
-function RequestCard({ booking: b, onStatus }: { booking: BookingRow; onStatus: (id: string, s: BookingStatus) => void }) {
+function RequestCard({ booking: b, onStatus, onRemove }: { booking: BookingRow; onStatus: (id: string, s: BookingStatus) => void; onRemove: (id: string) => void }) {
   const phoneVisible = b.status !== 'pending' && b.status !== 'cancelled';
   const [revealed, setRevealed] = useState(false);
   return (
@@ -161,6 +164,10 @@ function RequestCard({ booking: b, onStatus }: { booking: BookingRow; onStatus: 
           )}
           {b.status === 'confirmed' && <button onClick={() => onStatus(b.id, 'prepaid')} className="rounded-xl bg-violet-600 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-violet-700">Отметить предоплату</button>}
           {b.status === 'prepaid' && <button onClick={() => onStatus(b.id, 'completed')} className="rounded-xl bg-emerald-600 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700">Завершить</button>}
+          <button onClick={() => onRemove(b.id)} title="Удалить заявку"
+            className="flex items-center justify-center gap-1.5 rounded-xl border border-rose-200 px-3.5 py-2 text-sm font-medium text-rose-500 transition hover:bg-rose-50">
+            <Trash2 size={15} /> Удалить
+          </button>
         </div>
       </div>
     </div>

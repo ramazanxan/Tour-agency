@@ -30,7 +30,7 @@ export function Footer() {
             <ul className="space-y-2.5 text-sm">
               <FootLink href="/tours">Каталог туров</FootLink>
               <FootLink href="/#destinations">Направления</FootLink>
-              <FootLink href="/account">Мои брони</FootLink>
+              <FootLink href="/for-companies">Туркомпаниям</FootLink>
             </ul>
           </div>
 
