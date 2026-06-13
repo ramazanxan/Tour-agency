@@ -50,7 +50,7 @@ export function ParallaxBand() {
         />
 
         {/* Дальний хребет (хазовый, светлый) */}
-        <motion.div style={{ y: yFar, opacity: opFar }} className="absolute inset-x-0 bottom-0">
+        <motion.div style={{ y: yFar, opacity: opFar, willChange: 'transform' }} className="absolute inset-x-0 bottom-0">
           <svg viewBox="0 0 1440 300" preserveAspectRatio="none" className="h-[34vh] w-full">
             <defs>
               <linearGradient id="alFar" x1="0" y1="0" x2="0" y2="1">
@@ -64,7 +64,7 @@ export function ParallaxBand() {
         </motion.div>
 
         {/* Средний хребет */}
-        <motion.div style={{ y: yMid, opacity: opMid }} className="absolute inset-x-0 bottom-0">
+        <motion.div style={{ y: yMid, opacity: opMid, willChange: 'transform' }} className="absolute inset-x-0 bottom-0">
           <svg viewBox="0 0 1440 380" preserveAspectRatio="none" className="h-[46vh] w-full">
             <defs>
               <linearGradient id="alMid" x1="0" y1="0" x2="0" y2="1">
@@ -79,7 +79,7 @@ export function ParallaxBand() {
         </motion.div>
 
         {/* Передний хребет со снежными вершинами */}
-        <motion.div style={{ y: yNear, opacity: opNear }} className="absolute inset-x-0 bottom-0">
+        <motion.div style={{ y: yNear, opacity: opNear, willChange: 'transform' }} className="absolute inset-x-0 bottom-0">
           <svg viewBox="0 0 1440 480" preserveAspectRatio="none" className="h-[60vh] w-full">
             <defs>
               <linearGradient id="alNear" x1="0" y1="0" x2="0" y2="1">
@@ -95,7 +95,7 @@ export function ParallaxBand() {
 
         {/* Туман в долине */}
         <motion.div
-          style={{ y: yFog }}
+          style={{ y: yFog, willChange: 'transform' }}
           className="absolute inset-x-0 bottom-0 h-[26vh] bg-gradient-to-t from-[#0a1626] via-[#0a1626]/70 to-transparent"
         />
 

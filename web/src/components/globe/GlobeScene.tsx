@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Html, Stars, useTexture, AdaptiveDpr } from '@react-three/drei';
+import { Html, Stars, useTexture, OrbitControls, AdaptiveDpr } from '@react-three/drei';
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 import {
   countries,
@@ -20,18 +21,18 @@ interface AgencyMark { id: string; lat: number; lng: number; title: string; coun
 export type Stage = 'globe' | 'country' | 'region';
 
 const R = 1;
-// Ближе на стадиях страны/региона — лучше видно рельеф, регионы и горы
-const DIST: Record<Stage, number> = { globe: 3.9, country: 1.62, region: 1.3 };
+// Дистанции камеры до центра планеты на каждой стадии
+const DIST: Record<Stage, number> = { globe: 3.4, country: 1.75, region: 1.4 };
+const MIN_DIST = 1.18; // нельзя залететь под поверхность
+const MAX_DIST = 3.4; // дальше — отдаём прокрутку странице
 const TILT = 0.41; // наклон оси ~23.5°
+const TILT_EULER = new THREE.Euler(TILT, 0, 0);
 
 // Направление на Солнце по умолчанию (3/4 — виден и день, и кромка ночи с огнями городов)
 const DEFAULT_SUN = new THREE.Vector3(1.0, 0.35, 0.65).normalize();
-// Мутабельное направление: на стадии страны/региона солнце «подсвечивает» фокус,
-// чтобы были видны рельеф, горы и регионы (а не ночная сторона).
 const sunDir = DEFAULT_SUN.clone();
 
-// Набор реалистичной Земли — хостится локально в /public для мгновенной и надёжной загрузки
-// (бесоблачный день + ночные огни + облака + рельеф + маска воды/спекуляр)
+// Набор реалистичной Земли — хостится локально в /public
 const TEX = {
   day: '/textures/earth_day.jpg',
   night: '/textures/earth_night.png',
@@ -53,6 +54,11 @@ function latLngToVec3(lat: number, lng: number, r = R) {
     r * Math.cos(phi),
     r * Math.sin(phi) * Math.sin(theta)
   );
+}
+
+/** Мировое направление на точку (с учётом наклона оси планеты). */
+export function focusDirFor(lat: number, lng: number) {
+  return latLngToVec3(lat, lng, 1).normalize().applyEuler(TILT_EULER);
 }
 
 // ── Земля: PBR + кастомный шейдер (терминатор день/ночь, огни городов, блик океана) ──
@@ -81,7 +87,6 @@ function Earth({ earthRef }: { earthRef: React.MutableRefObject<THREE.Mesh | nul
       shader.uniforms.uWaterMap = { value: water };
       shader.uniforms.uNightIntensity = { value: 2.6 };
 
-      // world normal / position для расчёта терминатора
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
@@ -101,7 +106,6 @@ function Earth({ earthRef }: { earthRef: React.MutableRefObject<THREE.Mesh | nul
           '#include <common>',
           '#include <common>\nuniform vec3 uSunDir;\nuniform sampler2D uNightMap;\nuniform sampler2D uWaterMap;\nuniform float uNightIntensity;\nvarying vec3 vWNormal;\nvarying vec3 vWPos;'
         )
-        // Океан — гладкий и слегка металлический (зеркальный блик солнца), суша — матовая
         .replace(
           '#include <roughnessmap_fragment>',
           'float waterMask = texture2D(uWaterMap, vMapUv).r;\nfloat roughnessFactor = mix(0.93, 0.22, waterMask);'
@@ -110,7 +114,6 @@ function Earth({ earthRef }: { earthRef: React.MutableRefObject<THREE.Mesh | nul
           '#include <metalnessmap_fragment>',
           'float metalnessFactor = mix(0.0, 0.45, waterMask);'
         )
-        // Огни городов на ночной стороне + тёплое свечение у терминатора
         .replace(
           '#include <emissivemap_fragment>',
           `#include <emissivemap_fragment>
@@ -120,7 +123,6 @@ function Earth({ earthRef }: { earthRef: React.MutableRefObject<THREE.Mesh | nul
             vec3 cityLights = texture2D(uNightMap, vMapUv).rgb;
             cityLights = pow(cityLights, vec3(1.4)) * vec3(1.0, 0.85, 0.55);
             totalEmissiveRadiance += cityLights * night * uNightIntensity;
-            // мягкое тёплое свечение тонкой полосой заката на самом терминаторе
             float dusk = smoothstep(0.0, 0.16, ndl) * (1.0 - smoothstep(0.16, 0.40, ndl));
             totalEmissiveRadiance += vec3(1.0, 0.52, 0.30) * dusk * 0.14;
           }`
@@ -137,7 +139,47 @@ function Earth({ earthRef }: { earthRef: React.MutableRefObject<THREE.Mesh | nul
   );
 }
 
-// ── Облака: отдельная сфера, освещается тем же солнцем, медленный дрейф ──
+// ── Атмосфера: тонкое голубое сияние по кромке планеты (как на снимках NASA) ──
+function Atmosphere() {
+  const material = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        transparent: true,
+        side: THREE.BackSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        uniforms: { uColor: { value: new THREE.Color('#7fb4f0') } },
+        vertexShader: `
+          varying vec3 vN;
+          varying vec3 vP;
+          void main() {
+            vN = normalize(normalMatrix * normal);
+            vec4 mv = modelViewMatrix * vec4(position, 1.0);
+            vP = mv.xyz;
+            gl_Position = projectionMatrix * mv;
+          }`,
+        // Тонкая, плотная кромка у самого края диска (а не широкий «гало»),
+        // как тонкая голубая линия атмосферы на снимках с орбиты.
+        fragmentShader: `
+          uniform vec3 uColor;
+          varying vec3 vN;
+          varying vec3 vP;
+          void main() {
+            vec3 viewDir = normalize(-vP);
+            float fres = pow(1.0 - abs(dot(vN, viewDir)), 4.5);
+            gl_FragColor = vec4(uColor, fres * 0.5);
+          }`,
+      }),
+    []
+  );
+  return (
+    <mesh material={material} scale={1.012}>
+      <sphereGeometry args={[R, 64, 64]} />
+    </mesh>
+  );
+}
+
+// ── Облака: отдельная сфера, медленный дрейф ──
 function Clouds() {
   const ref = useRef<THREE.Mesh>(null);
   const clouds = useTexture(TEX.clouds);
@@ -145,20 +187,19 @@ function Clouds() {
   const material = useMemo(() => {
     clouds.colorSpace = THREE.SRGBColorSpace;
     clouds.anisotropy = 8;
-    const mat = new THREE.MeshStandardMaterial({
+    return new THREE.MeshStandardMaterial({
       map: clouds,
       alphaMap: clouds,
       transparent: true,
       depthWrite: false,
-      opacity: 0.92,
+      opacity: 0.9,
       roughness: 1,
       metalness: 0,
     });
-    return mat;
   }, [clouds]);
 
   useFrame((_, delta) => {
-    if (ref.current) ref.current.rotation.y += delta * 0.012;
+    if (ref.current) ref.current.rotation.y += delta * 0.01;
   });
 
   return (
@@ -202,7 +243,6 @@ function Pin({
   const haloRef = useRef<THREE.Mesh>(null);
   const pos = useMemo(() => latLngToVec3(lat, lng, R * 1.01), [lat, lng]);
   const active = selected || hovered;
-  // Маркеры заметно мельче — аккуратные точки, как в Apple/Google Maps
   const dotR = big ? 0.009 : 0.0065;
 
   useFrame((state) => {
@@ -331,7 +371,6 @@ function SunController({
 }) {
   useFrame(() => {
     if (stage !== 'globe' && focusDir) {
-      // светим почти в лоб на регион, но с подмесом бокового угла — для объёма гор
       _sunTarget.copy(focusDir).normalize().lerp(DEFAULT_SUN, 0.28).normalize();
     } else {
       _sunTarget.copy(DEFAULT_SUN);
@@ -346,33 +385,83 @@ function SunController({
   return null;
 }
 
-// ── Камера: кинематографический вход + плавный фокус ─────────
-function CameraRig({ stage, focusDir }: { stage: Stage; focusDir: THREE.Vector3 | null }) {
+// ── Камера: кинематографический «полёт» к стране/региону поверх OrbitControls ──
+function CameraController({
+  stage,
+  focusDir,
+  controlsRef,
+}: {
+  stage: Stage;
+  focusDir: THREE.Vector3 | null;
+  controlsRef: React.MutableRefObject<OrbitControlsImpl | null>;
+}) {
   const { camera } = useThree();
-  const intro = useRef(0); // 0→1 на старте
-  const desired = useRef(new THREE.Vector3(0, 0, DIST.globe));
+  const flying = useRef(true); // начинаем с интро-полёта
+  const desired = useRef(new THREE.Vector3());
 
-  useFrame((_, delta) => {
-    intro.current = Math.min(1, intro.current + delta * 0.6);
-    // в начале камера дальше и плавно (ease-out) подлетает к планете
-    const introExtra = Math.pow(1 - intro.current, 3) * 2.6;
+  // Любая смена фокуса/стадии запускает плавный полёт (на время отдаём управление камерой себе)
+  useEffect(() => {
+    flying.current = true;
+    if (controlsRef.current) controlsRef.current.enabled = false;
+  }, [stage, focusDir, controlsRef]);
 
-    let dist: number;
+  useFrame(() => {
+    const controls = controlsRef.current;
+    if (!flying.current) return;
+
     if (stage === 'globe' || !focusDir) {
-      desired.current.set(0, 0, 1);
-      dist = DIST.globe;
+      // вернуться к обзорному виду чуть сверху
+      desired.current.set(0, 0.22, 1).normalize().multiplyScalar(DIST.globe);
     } else {
-      // направление на выбранную страну/регион в мировых координатах
-      desired.current.copy(focusDir).normalize();
-      dist = DIST[stage];
+      desired.current.copy(focusDir).multiplyScalar(DIST[stage]);
     }
-    desired.current.multiplyScalar(dist + introExtra);
 
-    // быстрее на приближении к стране/региону — ощущается как «полёт» камеры
-    const speed = stage === 'globe' ? 0.06 : 0.08;
-    camera.position.lerp(desired.current, speed);
+    camera.position.lerp(desired.current, 0.075);
+    if (controls) controls.target.set(0, 0, 0);
     camera.lookAt(0, 0, 0);
+
+    if (camera.position.distanceTo(desired.current) < 0.03) {
+      flying.current = false;
+      if (controls) {
+        controls.target.set(0, 0, 0);
+        controls.enabled = true;
+        controls.update();
+      }
+    }
   });
+  return null;
+}
+
+// ── Зум колесом/жестом и кнопками (без захвата прокрутки страницы) ──
+function ZoomHandler({ controlsRef }: { controlsRef: React.MutableRefObject<OrbitControlsImpl | null> }) {
+  const { gl, camera } = useThree();
+  useEffect(() => {
+    const el = gl.domElement;
+    const apply = (factor: number) => {
+      const c = controlsRef.current;
+      if (!c) return;
+      const dir = camera.position.clone().sub(c.target);
+      const nd = THREE.MathUtils.clamp(dir.length() * factor, MIN_DIST, MAX_DIST);
+      camera.position.copy(c.target).add(dir.setLength(nd));
+      c.update();
+    };
+    const onWheel = (e: WheelEvent) => {
+      const c = controlsRef.current;
+      if (!c || !c.enabled) return;
+      const dist = camera.position.distanceTo(c.target);
+      // у дальнего предела — прокрутка вниз листает страницу дальше
+      if (e.deltaY > 0 && dist >= MAX_DIST - 0.02) return;
+      e.preventDefault();
+      apply(Math.exp(e.deltaY * 0.0011));
+    };
+    const onZoom = (e: Event) => apply((e as CustomEvent<number>).detail < 0 ? 0.82 : 1.22);
+    el.addEventListener('wheel', onWheel, { passive: false });
+    window.addEventListener('jolu-globe-zoom', onZoom);
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      window.removeEventListener('jolu-globe-zoom', onZoom);
+    };
+  }, [gl, camera, controlsRef]);
   return null;
 }
 
@@ -396,14 +485,17 @@ function Scene({
   onSelectCountry: (c: Country) => void;
   onSelectPlace: (p: Place) => void;
 }) {
-  const spin = useRef<THREE.Group>(null);
   const earthRef = useRef<THREE.Mesh | null>(null);
   const lightRef = useRef<THREE.DirectionalLight | null>(null);
+  const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const [focusDir, setFocusDir] = useState<THREE.Vector3 | null>(null);
-  const spinning = stage === 'globe';
+  const [engaged, setEngaged] = useState(false);
   const country = countryId ? getCountry(countryId) : null;
 
-  // Туры турагентств → отметки на глобусе (по совпадению направления с известным местом)
+  // На обзорной стадии возвращаем авто-вращение, если пользователь не трогал глобус вручную
+  useEffect(() => { if (stage === 'globe') setEngaged(false); }, [stage]);
+
+  // Туры турагентств → отметки на глобусе
   const [agencyMarks, setAgencyMarks] = useState<AgencyMark[]>([]);
   const [hoveredAgency, setHoveredAgency] = useState<string | null>(null);
   useEffect(() => {
@@ -428,21 +520,15 @@ function Scene({
     [agencyMarks, stage, countryId]
   );
 
-  useFrame((_, delta) => {
-    if (spin.current && spinning) spin.current.rotation.y += delta * 0.035;
-  });
-
+  // Куда лететь камере (мировое направление с учётом наклона оси)
   useEffect(() => {
-    if (!spin.current) return;
     if (stage === 'globe') { setFocusDir(null); return; }
     const here =
       stage === 'region' && country
         ? country.regions.find((r) => r.id === placeId)
         : country;
     if (!here) return;
-    const local = latLngToVec3(here.lat, here.lng, 1).normalize();
-    const q = spin.current.getWorldQuaternion(new THREE.Quaternion());
-    setFocusDir(local.applyQuaternion(q));
+    setFocusDir(focusDirFor(here.lat, here.lng));
   }, [stage, placeId, country]);
 
   const visiblePlaces = useMemo(
@@ -452,75 +538,88 @@ function Scene({
 
   return (
     <>
-      {/* почти чёрный космос + холодный заполняющий свет от звёзд */}
       <ambientLight intensity={0.1} color="#9bb8ff" />
-      {/* Солнце — направленный источник; при фокусе подсвечивает регион (SunController) */}
       <directionalLight ref={lightRef} position={DEFAULT_SUN.clone().multiplyScalar(8)} intensity={3.4} color="#fff6ea" />
       <SunController stage={stage} focusDir={focusDir} lightRef={lightRef} />
-      <Stars radius={70} depth={50} count={3500} factor={4} saturation={0} fade speed={0.4} />
+      <Stars radius={70} depth={50} count={3000} factor={4} saturation={0} fade speed={0.4} />
 
       <group rotation={[TILT, 0, 0]}>
-        <group ref={spin}>
-          <Earth earthRef={earthRef} />
-          <Clouds />
+        <Earth earthRef={earthRef} />
+        <Clouds />
 
-          {stage === 'globe' &&
-            countries.map((c) => (
-              <Pin
-                key={c.id}
-                lat={c.lat}
-                lng={c.lng}
-                name={c.name}
-                color={c.accent}
-                flagCode={c.id}
-                big
-                showName={false}
-                hovered={hoveredId === c.id}
-                occludeRef={earthRef}
-                onClick={() => onSelectCountry(c)}
-                onOver={() => onHover(c.id)}
-                onOut={() => onHover(null)}
-              />
-            ))}
-
-          {stage !== 'globe' &&
-            visiblePlaces.map((p) => (
-              <Pin
-                key={p.id}
-                lat={p.lat}
-                lng={p.lng}
-                name={p.name}
-                color={country?.accent ?? '#fc5212'}
-                showName={hoveredId === p.id}
-                hovered={hoveredId === p.id}
-                selected={placeId === p.id}
-                occludeRef={earthRef}
-                onClick={() => onSelectPlace(p)}
-                onOver={() => onHover(p.id)}
-                onOut={() => onHover(null)}
-              />
-            ))}
-
-          {/* Туры турагентств */}
-          {shownAgency.map((m) => (
-            <AgencyMarker
-              key={m.id}
-              mark={m}
-              hovered={hoveredAgency === m.id}
+        {stage === 'globe' &&
+          countries.map((c) => (
+            <Pin
+              key={c.id}
+              lat={c.lat}
+              lng={c.lng}
+              name={c.name}
+              color={c.accent}
+              flagCode={c.id}
+              big
+              showName={false}
+              hovered={hoveredId === c.id}
               occludeRef={earthRef}
-              onOver={() => setHoveredAgency(m.id)}
-              onOut={() => setHoveredAgency(null)}
+              onClick={() => onSelectCountry(c)}
+              onOver={() => onHover(c.id)}
+              onOut={() => onHover(null)}
             />
           ))}
-        </group>
+
+        {stage !== 'globe' &&
+          visiblePlaces.map((p) => (
+            <Pin
+              key={p.id}
+              lat={p.lat}
+              lng={p.lng}
+              name={p.name}
+              color={country?.accent ?? '#fc5212'}
+              showName={hoveredId === p.id}
+              hovered={hoveredId === p.id}
+              selected={placeId === p.id}
+              occludeRef={earthRef}
+              onClick={() => onSelectPlace(p)}
+              onOver={() => onHover(p.id)}
+              onOut={() => onHover(null)}
+            />
+          ))}
+
+        {shownAgency.map((m) => (
+          <AgencyMarker
+            key={m.id}
+            mark={m}
+            hovered={hoveredAgency === m.id}
+            occludeRef={earthRef}
+            onOver={() => setHoveredAgency(m.id)}
+            onOut={() => setHoveredAgency(null)}
+          />
+        ))}
       </group>
 
-      <CameraRig stage={stage} focusDir={focusDir} />
+      <Atmosphere />
+
+      <OrbitControls
+        ref={controlsRef}
+        makeDefault
+        enablePan={false}
+        enableZoom={false} /* зум — собственный обработчик, чтобы не ломать прокрутку */
+        enableDamping
+        dampingFactor={0.08}
+        rotateSpeed={0.55}
+        minDistance={MIN_DIST}
+        maxDistance={MAX_DIST}
+        autoRotate={stage === 'globe' && !engaged}
+        autoRotateSpeed={0.42}
+        onStart={() => setEngaged(true)}
+      />
+      <CameraController stage={stage} focusDir={focusDir} controlsRef={controlsRef} />
+      <ZoomHandler controlsRef={controlsRef} />
     </>
   );
 }
 
 export function GlobeScene(props: {
+  active?: boolean;
   stage: Stage;
   mode: SceneMode;
   countryId: string | null;
@@ -530,15 +629,17 @@ export function GlobeScene(props: {
   onSelectCountry: (c: Country) => void;
   onSelectPlace: (p: Place) => void;
 }) {
+  const { active = true, ...scene } = props;
   return (
     <Canvas
-      camera={{ position: [0, 0, 6.2], fov: 32 }}
-      dpr={[1, 2]}
+      frameloop={active ? 'always' : 'never'}
+      camera={{ position: [0, 0.4, 5.4], fov: 32 }}
+      dpr={[1, 1.75]}
       gl={{ antialias: true, alpha: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.05 }}
       onPointerMissed={() => { document.body.style.cursor = 'auto'; }}
     >
       <AdaptiveDpr pixelated />
-      <Scene {...props} />
+      <Scene {...scene} />
     </Canvas>
   );
 }

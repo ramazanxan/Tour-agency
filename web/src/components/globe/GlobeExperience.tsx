@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import Link from 'next/link';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { ArrowLeft, ChevronDown, MapPin, Play, Route, Hotel, X } from 'lucide-react';
+import { ArrowLeft, ChevronDown, MapPin, Play, Route, Hotel, X, Search, Plus, Minus, Hand } from 'lucide-react';
 import {
   countries,
+  allPlaces,
   getCountry,
   regionsForMode,
   MODES,
@@ -39,6 +40,8 @@ const fmt = (n: number, c: 'KGS' | 'USD') => formatPrice(n, c);
 
 export function GlobeExperience() {
   const reduce = useReducedMotion();
+  const sectionRef = useRef<HTMLElement>(null);
+  const [active, setActive] = useState(true);
   const [stage, setStage] = useState<Stage>('globe');
   const [countryId, setCountryId] = useState<string | null>(null);
   const [placeId, setPlaceId] = useState<string | null>(null);
@@ -50,17 +53,34 @@ export function GlobeExperience() {
   const place = country?.regions.find((r) => r.id === placeId) ?? null;
   const places = country ? regionsForMode(country, mode) : [];
 
+  // Рендерим WebGL-сцену только пока герой на экране — иначе глобус «съедает»
+  // кадры и параллакс гор начинает лагать при прокрутке.
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => setActive(entry.isIntersecting),
+      { rootMargin: '120px' }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
   function selectCountry(c: Country) { setCountryId(c.id); setMode('all'); setStage('country'); }
   function selectPlace(p: Place) { setPlaceId(p.id); setStage('region'); }
+  function goToPlace(c: Country, p: Place) { setCountryId(c.id); setMode('all'); setPlaceId(p.id); setStage('region'); }
   function back() {
     if (stage === 'region') { setStage('country'); setPlaceId(null); }
     else if (stage === 'country') { setStage('globe'); setCountryId(null); }
   }
+  const zoom = (dir: -1 | 1) =>
+    window.dispatchEvent(new CustomEvent('jolu-globe-zoom', { detail: dir }));
 
   return (
-    <section className="relative h-[calc(100svh-4rem)] min-h-[560px] w-full overflow-hidden bg-lake-950">
+    <section ref={sectionRef} className="relative h-[calc(100svh-4rem)] min-h-[560px] w-full overflow-hidden bg-lake-950">
       <div className="absolute inset-0">
         <GlobeScene
+          active={active}
           stage={stage}
           mode={mode}
           countryId={countryId}
@@ -70,6 +90,24 @@ export function GlobeExperience() {
           onSelectCountry={selectCountry}
           onSelectPlace={selectPlace}
         />
+      </div>
+
+      {/* Поиск стран и мест — как в Google Earth */}
+      <GlobeSearch onCountry={selectCountry} onPlace={goToPlace} />
+
+      {/* Зум + подсказка «крутите» */}
+      <div className="pointer-events-auto absolute bottom-[88px] right-3 z-20 flex flex-col items-center gap-2 sm:right-5">
+        <button onClick={() => zoom(-1)} aria-label="Приблизить"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-white/12 text-white backdrop-blur-md transition-colors hover:bg-white/22">
+          <Plus size={18} />
+        </button>
+        <button onClick={() => zoom(1)} aria-label="Отдалить"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-white/12 text-white backdrop-blur-md transition-colors hover:bg-white/22">
+          <Minus size={18} />
+        </button>
+        <span className="mt-1 hidden items-center gap-1 rounded-full bg-white/10 px-2 py-1 text-[10px] font-medium text-white/70 backdrop-blur sm:flex">
+          <Hand size={11} /> крутите
+        </span>
       </div>
 
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-lake-950/40 via-transparent to-lake-950/85" />
@@ -184,6 +222,93 @@ export function GlobeExperience() {
 
       <AnimatePresence>{video && <VideoModal src={video} onClose={() => setVideo(null)} />}</AnimatePresence>
     </section>
+  );
+}
+
+// Поиск стран и мест на глобусе
+function GlobeSearch({
+  onCountry, onPlace,
+}: {
+  onCountry: (c: Country) => void;
+  onPlace: (c: Country, p: Place) => void;
+}) {
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  const results = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return [] as { type: 'country'; c: Country }[] | { type: 'place'; c: Country; p: Place }[];
+    const match = (txt: string) => txt.toLowerCase().includes(s);
+    const cs = countries
+      .filter((c) => match(c.name) || match(c.nameEn))
+      .map((c) => ({ type: 'country' as const, c }));
+    const ps = allPlaces
+      .filter((p) => match(p.name) || match(p.nameEn))
+      .map((p) => ({ type: 'place' as const, c: getCountry(p.countryId)!, p }));
+    return [...cs, ...ps].slice(0, 7);
+  }, [q]);
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
+
+  function pick(r: { type: 'country'; c: Country } | { type: 'place'; c: Country; p: Place }) {
+    if (r.type === 'country') onCountry(r.c);
+    else onPlace(r.c, r.p);
+    setQ('');
+    setOpen(false);
+  }
+
+  return (
+    <div ref={boxRef} className="pointer-events-auto absolute left-1/2 top-3 z-30 w-[min(92vw,22rem)] -translate-x-1/2 sm:top-5">
+      <div className="flex items-center gap-2 rounded-full border border-white/15 bg-slate-950/55 px-4 py-2.5 text-white shadow-lg backdrop-blur-md">
+        <Search size={16} className="shrink-0 text-white/60" />
+        <input
+          value={q}
+          onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          placeholder="Найти страну или место…"
+          className="w-full bg-transparent text-sm placeholder:text-white/45 focus:outline-none"
+        />
+        {q && (
+          <button onClick={() => { setQ(''); setOpen(false); }} aria-label="Очистить" className="shrink-0 text-white/50 hover:text-white">
+            <X size={15} />
+          </button>
+        )}
+      </div>
+
+      <AnimatePresence>
+        {open && results.length > 0 && (
+          <motion.ul
+            initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.16 }}
+            className="mt-2 overflow-hidden rounded-2xl border border-white/12 bg-slate-950/80 p-1.5 shadow-2xl backdrop-blur-xl"
+          >
+            {results.map((r) => (
+              <li key={r.type === 'country' ? `c-${r.c.id}` : `p-${r.p.id}`}>
+                <button
+                  onClick={() => pick(r)}
+                  className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-white/90 transition-colors hover:bg-white/10"
+                >
+                  <Flag code={r.c.id} className="h-3.5 w-5 shrink-0 rounded-[2px] ring-1 ring-white/20" />
+                  <span className="min-w-0 flex-1 truncate">
+                    {r.type === 'country' ? r.c.name : r.p.name}
+                  </span>
+                  <span className="shrink-0 text-xs text-white/45">
+                    {r.type === 'country' ? 'Страна' : r.c.name}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </motion.ul>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
 
