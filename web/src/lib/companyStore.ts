@@ -60,6 +60,7 @@ export function getTours(companyId: string): AgencyTour[] {
 }
 export function saveTours(companyId: string, tours: AgencyTour[]) {
   write(toursKey(companyId), tours);
+  try { window.dispatchEvent(new Event('jolu-tours')); } catch { /* ignore */ }
 }
 export function addTour(companyId: string, tour: Omit<AgencyTour, 'id' | 'createdAt'>): AgencyTour {
   const full: AgencyTour = { ...tour, id: `t-${Date.now().toString(36)}`, createdAt: new Date().toISOString() };
@@ -72,6 +73,26 @@ export function removeTour(companyId: string, id: string) {
 }
 export function setTourStatus(companyId: string, id: string, status: AgencyTour['status']) {
   saveTours(companyId, getTours(companyId).map((t) => (t.id === id ? { ...t, status } : t)));
+}
+
+export interface AgencyTourWithCompany extends AgencyTour {
+  companyId: string;
+}
+
+/** Все туры всех компаний (скан localStorage) — для отметок на глобусе. */
+export function getAllAgencyTours(): AgencyTourWithCompany[] {
+  if (typeof localStorage === 'undefined') return [];
+  const out: AgencyTourWithCompany[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    const m = key && key.match(/^jolu\.company\.(.+)\.tours$/);
+    if (!m) continue;
+    try {
+      const tours = JSON.parse(localStorage.getItem(key!) || '[]') as AgencyTour[];
+      tours.forEach((t) => out.push({ ...t, companyId: m[1] }));
+    } catch { /* ignore */ }
+  }
+  return out;
 }
 
 export function getProfile(companyId: string, fallbackName = ''): CompanyProfile {

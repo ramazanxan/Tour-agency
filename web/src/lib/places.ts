@@ -146,3 +146,19 @@ export function regionsForMode(country: Country, mode: SceneMode): Place[] {
   if (mode === 'all') return country.regions;
   return country.regions.filter((r) => r.modes.includes(mode));
 }
+
+/** Сопоставить произвольный текст направления с известным местом (для отметок туров компаний на глобусе). */
+export function matchPlaceByName(q: string): Place | undefined {
+  const s = q.trim().toLowerCase();
+  if (!s) return undefined;
+  return (
+    allPlaces.find((p) => p.name.toLowerCase() === s || p.nameEn.toLowerCase() === s) ||
+    allPlaces.find(
+      (p) =>
+        p.name.toLowerCase().includes(s) ||
+        s.includes(p.name.toLowerCase()) ||
+        p.nameEn.toLowerCase().includes(s) ||
+        s.includes(p.nameEn.toLowerCase())
+    )
+  );
+}

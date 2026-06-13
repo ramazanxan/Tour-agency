@@ -8,19 +8,27 @@ import {
   countries,
   regionsForMode,
   getCountry,
+  matchPlaceByName,
   type Country,
   type Place,
   type SceneMode,
 } from '@/lib/places';
+import { getAllAgencyTours } from '@/lib/companyStore';
+
+interface AgencyMark { id: string; lat: number; lng: number; title: string; countryId: string }
 
 export type Stage = 'globe' | 'country' | 'region';
 
 const R = 1;
-const DIST: Record<Stage, number> = { globe: 3.9, country: 2.05, region: 1.62 };
+// Ближе на стадиях страны/региона — лучше видно рельеф, регионы и горы
+const DIST: Record<Stage, number> = { globe: 3.9, country: 1.62, region: 1.3 };
 const TILT = 0.41; // наклон оси ~23.5°
 
-// Направление на Солнце в мировых координатах (3/4 — виден и день, и кромка ночи с огнями городов)
-const SUN_DIR = new THREE.Vector3(1.0, 0.35, 0.65).normalize();
+// Направление на Солнце по умолчанию (3/4 — виден и день, и кромка ночи с огнями городов)
+const DEFAULT_SUN = new THREE.Vector3(1.0, 0.35, 0.65).normalize();
+// Мутабельное направление: на стадии страны/региона солнце «подсвечивает» фокус,
+// чтобы были видны рельеф, горы и регионы (а не ночная сторона).
+const sunDir = DEFAULT_SUN.clone();
 
 // Набор реалистичной Земли — хостится локально в /public для мгновенной и надёжной загрузки
 // (бесоблачный день + ночные огни + облака + рельеф + маска воды/спекуляр)
@@ -62,13 +70,13 @@ function Earth({ earthRef }: { earthRef: React.MutableRefObject<THREE.Mesh | nul
     const mat = new THREE.MeshStandardMaterial({
       map: day,
       bumpMap: bump,
-      bumpScale: 0.6,
+      bumpScale: 0.9,
       metalness: 0.1,
       roughness: 0.85,
     });
 
     mat.onBeforeCompile = (shader) => {
-      shader.uniforms.uSunDir = { value: SUN_DIR };
+      shader.uniforms.uSunDir = { value: sunDir };
       shader.uniforms.uNightMap = { value: night };
       shader.uniforms.uWaterMap = { value: water };
       shader.uniforms.uNightIntensity = { value: 2.6 };
@@ -192,15 +200,16 @@ function Pin({
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const haloRef = useRef<THREE.Mesh>(null);
-  const pos = useMemo(() => latLngToVec3(lat, lng, R * 1.012), [lat, lng]);
+  const pos = useMemo(() => latLngToVec3(lat, lng, R * 1.01), [lat, lng]);
   const active = selected || hovered;
-  const dotR = big ? 0.018 : 0.012;
+  // Маркеры заметно мельче — аккуратные точки, как в Apple/Google Maps
+  const dotR = big ? 0.009 : 0.0065;
 
   useFrame((state) => {
     if (haloRef.current) {
       const t = (Math.sin(state.clock.elapsedTime * 2.2) + 1) / 2;
-      haloRef.current.scale.setScalar(1 + t * (active ? 2.8 : big ? 2 : 1.4));
-      (haloRef.current.material as THREE.MeshBasicMaterial).opacity = (1 - t) * 0.55;
+      haloRef.current.scale.setScalar(1 + t * (active ? 1.9 : big ? 1.3 : 1.0));
+      (haloRef.current.material as THREE.MeshBasicMaterial).opacity = (1 - t) * 0.4;
     }
     if (groupRef.current) {
       groupRef.current.getWorldPosition(_wp);
@@ -213,26 +222,26 @@ function Pin({
   return (
     <group ref={groupRef} position={pos}>
       <mesh>
-        <sphereGeometry args={[dotR, 18, 18]} />
+        <sphereGeometry args={[dotR, 16, 16]} />
         <meshBasicMaterial color={active ? '#ffffff' : color} toneMapped={false} />
       </mesh>
       <mesh ref={haloRef}>
-        <sphereGeometry args={[dotR, 18, 18]} />
-        <meshBasicMaterial color={color} transparent opacity={0.5} toneMapped={false} />
+        <sphereGeometry args={[dotR, 16, 16]} />
+        <meshBasicMaterial color={color} transparent opacity={0.45} toneMapped={false} />
       </mesh>
       <mesh
         onClick={(e) => { e.stopPropagation(); onClick(); }}
         onPointerOver={(e) => { e.stopPropagation(); onOver(); document.body.style.cursor = 'pointer'; }}
         onPointerOut={() => { onOut(); document.body.style.cursor = 'auto'; }}
       >
-        <sphereGeometry args={[big ? 0.06 : 0.045, 12, 12]} />
+        <sphereGeometry args={[big ? 0.04 : 0.03, 12, 12]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
 
       {(flagCode || showName || active) && (
         <Html
           center
-          position={[0, big ? 0.05 : 0.035, 0]}
+          position={[0, big ? 0.032 : 0.024, 0]}
           occlude={[occludeRef as unknown as React.MutableRefObject<THREE.Object3D>]}
           zIndexRange={[20, 0]}
           style={{ pointerEvents: 'none' }}
@@ -265,26 +274,103 @@ function Pin({
   );
 }
 
+// ── Маркер тура турагентства (мелкая золотая точка) ─────────
+function AgencyMarker({
+  mark, hovered, occludeRef, onOver, onOut,
+}: {
+  mark: AgencyMark;
+  hovered: boolean;
+  occludeRef: React.MutableRefObject<THREE.Mesh | null>;
+  onOver: () => void;
+  onOut: () => void;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+  const pos = useMemo(() => latLngToVec3(mark.lat, mark.lng, R * 1.008), [mark.lat, mark.lng]);
+
+  useFrame((state) => {
+    if (groupRef.current) {
+      groupRef.current.getWorldPosition(_wp);
+      _normal.copy(_wp).normalize();
+      _toCam.copy(state.camera.position).sub(_wp).normalize();
+      groupRef.current.visible = _normal.dot(_toCam) > -0.05;
+    }
+  });
+
+  return (
+    <group ref={groupRef} position={pos}>
+      <mesh
+        onPointerOver={(e) => { e.stopPropagation(); onOver(); document.body.style.cursor = 'pointer'; }}
+        onPointerOut={() => { onOut(); document.body.style.cursor = 'auto'; }}
+      >
+        <sphereGeometry args={[0.02, 10, 10]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+      <mesh>
+        <sphereGeometry args={[hovered ? 0.0075 : 0.0055, 14, 14]} />
+        <meshBasicMaterial color={hovered ? '#ffffff' : '#f5b301'} toneMapped={false} />
+      </mesh>
+      {hovered && (
+        <Html center position={[0, 0.022, 0]} occlude={[occludeRef as unknown as React.MutableRefObject<THREE.Object3D>]} zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
+          <div className="flex items-center gap-1 whitespace-nowrap rounded-full bg-amber-400 px-2.5 py-1 text-[11px] font-bold text-slate-900 shadow-lg">
+            {mark.title}
+          </div>
+        </Html>
+      )}
+    </group>
+  );
+}
+
+// ── Солнце: на globe — фикс. терминатор; при фокусе — подсвечивает регион ──
+const _sunTarget = new THREE.Vector3();
+function SunController({
+  stage, focusDir, lightRef,
+}: {
+  stage: Stage;
+  focusDir: THREE.Vector3 | null;
+  lightRef: React.MutableRefObject<THREE.DirectionalLight | null>;
+}) {
+  useFrame(() => {
+    if (stage !== 'globe' && focusDir) {
+      // светим почти в лоб на регион, но с подмесом бокового угла — для объёма гор
+      _sunTarget.copy(focusDir).normalize().lerp(DEFAULT_SUN, 0.28).normalize();
+    } else {
+      _sunTarget.copy(DEFAULT_SUN);
+    }
+    sunDir.lerp(_sunTarget, 0.05).normalize();
+    if (lightRef.current) {
+      lightRef.current.position.copy(sunDir).multiplyScalar(8);
+      lightRef.current.target.position.set(0, 0, 0);
+      lightRef.current.target.updateMatrixWorld();
+    }
+  });
+  return null;
+}
+
 // ── Камера: кинематографический вход + плавный фокус ─────────
 function CameraRig({ stage, focusDir }: { stage: Stage; focusDir: THREE.Vector3 | null }) {
   const { camera } = useThree();
-  const target = useRef(new THREE.Vector3(0, 0, DIST.globe));
   const intro = useRef(0); // 0→1 на старте
+  const desired = useRef(new THREE.Vector3(0, 0, DIST.globe));
 
   useFrame((_, delta) => {
-    intro.current = Math.min(1, intro.current + delta * 0.5);
-    // ease-out cubic для входа
-    const e = 1 - Math.pow(1 - intro.current, 3);
+    intro.current = Math.min(1, intro.current + delta * 0.6);
+    // в начале камера дальше и плавно (ease-out) подлетает к планете
+    const introExtra = Math.pow(1 - intro.current, 3) * 2.6;
 
-    if (stage === 'globe' || !focusDir) target.current.set(0, 0, DIST.globe);
-    else target.current.copy(focusDir).multiplyScalar(DIST[stage]);
+    let dist: number;
+    if (stage === 'globe' || !focusDir) {
+      desired.current.set(0, 0, 1);
+      dist = DIST.globe;
+    } else {
+      // направление на выбранную страну/регион в мировых координатах
+      desired.current.copy(focusDir).normalize();
+      dist = DIST[stage];
+    }
+    desired.current.multiplyScalar(dist + introExtra);
 
-    // на входе камера стартует дальше и приближается
-    const introDist = THREE.MathUtils.lerp(6.2, 0, 1 - e);
-    const dir = target.current.clone().normalize();
-    const wanted = target.current.clone().add(dir.multiplyScalar(introDist));
-
-    camera.position.lerp(wanted, stage === 'globe' && intro.current < 1 ? 0.12 : 0.055);
+    // быстрее на приближении к стране/региону — ощущается как «полёт» камеры
+    const speed = stage === 'globe' ? 0.06 : 0.08;
+    camera.position.lerp(desired.current, speed);
     camera.lookAt(0, 0, 0);
   });
   return null;
@@ -312,9 +398,35 @@ function Scene({
 }) {
   const spin = useRef<THREE.Group>(null);
   const earthRef = useRef<THREE.Mesh | null>(null);
+  const lightRef = useRef<THREE.DirectionalLight | null>(null);
   const [focusDir, setFocusDir] = useState<THREE.Vector3 | null>(null);
   const spinning = stage === 'globe';
   const country = countryId ? getCountry(countryId) : null;
+
+  // Туры турагентств → отметки на глобусе (по совпадению направления с известным местом)
+  const [agencyMarks, setAgencyMarks] = useState<AgencyMark[]>([]);
+  const [hoveredAgency, setHoveredAgency] = useState<string | null>(null);
+  useEffect(() => {
+    const load = () => {
+      const marks: AgencyMark[] = [];
+      getAllAgencyTours()
+        .filter((t) => t.status === 'published')
+        .forEach((t) => {
+          const place = matchPlaceByName(t.destination);
+          if (place) marks.push({ id: t.id, lat: place.lat, lng: place.lng, title: t.title, countryId: place.countryId });
+        });
+      setAgencyMarks(marks);
+    };
+    load();
+    window.addEventListener('storage', load);
+    window.addEventListener('jolu-tours', load);
+    return () => { window.removeEventListener('storage', load); window.removeEventListener('jolu-tours', load); };
+  }, []);
+
+  const shownAgency = useMemo(
+    () => (stage === 'globe' ? agencyMarks : agencyMarks.filter((m) => m.countryId === countryId)),
+    [agencyMarks, stage, countryId]
+  );
 
   useFrame((_, delta) => {
     if (spin.current && spinning) spin.current.rotation.y += delta * 0.035;
@@ -341,9 +453,10 @@ function Scene({
   return (
     <>
       {/* почти чёрный космос + холодный заполняющий свет от звёзд */}
-      <ambientLight intensity={0.08} color="#9bb8ff" />
-      {/* Солнце — основной направленный источник, совпадает с терминатором */}
-      <directionalLight position={SUN_DIR.clone().multiplyScalar(8)} intensity={3.4} color="#fff6ea" />
+      <ambientLight intensity={0.1} color="#9bb8ff" />
+      {/* Солнце — направленный источник; при фокусе подсвечивает регион (SunController) */}
+      <directionalLight ref={lightRef} position={DEFAULT_SUN.clone().multiplyScalar(8)} intensity={3.4} color="#fff6ea" />
+      <SunController stage={stage} focusDir={focusDir} lightRef={lightRef} />
       <Stars radius={70} depth={50} count={3500} factor={4} saturation={0} fade speed={0.4} />
 
       <group rotation={[TILT, 0, 0]}>
@@ -387,6 +500,18 @@ function Scene({
                 onOut={() => onHover(null)}
               />
             ))}
+
+          {/* Туры турагентств */}
+          {shownAgency.map((m) => (
+            <AgencyMarker
+              key={m.id}
+              mark={m}
+              hovered={hoveredAgency === m.id}
+              occludeRef={earthRef}
+              onOver={() => setHoveredAgency(m.id)}
+              onOut={() => setHoveredAgency(null)}
+            />
+          ))}
         </group>
       </group>
 
